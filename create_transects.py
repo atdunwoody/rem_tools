@@ -66,7 +66,7 @@ def format_station(distance):
     return f"{main}+{plus:02d}"
 
 
-create_transects(r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\Centerline.gpkg",
-                 r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\Transects_50ft.gpkg", 
-                 spacing=50, 
-                 transect_length=100)
+create_transects(r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\CenterlineValley.gpkg",
+                 r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\TransectsValley_400ft.gpkg", 
+                 spacing=400, 
+                 transect_length=1500)

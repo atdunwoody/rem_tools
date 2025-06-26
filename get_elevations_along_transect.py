@@ -70,13 +70,80 @@ def extract_min_points(transect_gpkg: str, dem_path: str, output_gpkg: str, laye
     gdf_pts.to_file(output_gpkg, driver="GPKG", layer=layer_name)
     print(f"Written {len(gdf_pts)} points to '{output_gpkg}' layer='{layer_name}'")
 
+def extract_median_points(transect_gpkg: str,
+                          dem_path: str,
+                          output_gpkg: str,
+                          layer_name: str = "median_elev_points"):
+    """
+    Extract median-elevation points and endpoints for transect lines.
+
+    For each line in the input GeoPackage, samples the DEM at
+    intervals equal to the raster resolution, finds the median
+    elevation and its location, then creates three points:
+      - The location of the median elevation
+      - The start vertex of the line
+      - The end vertex of the line
+
+    All points carry the median elevation under the field "elevation".
+    Results are saved to a new layer in an output GeoPackage.
+    """
+    # Read input transects
+    gdf_lines = gpd.read_file(transect_gpkg)
+    crs = gdf_lines.crs
+
+    points = []
+
+    with rasterio.open(dem_path) as src:
+        # DEM pixel size
+        res_x = abs(src.transform.a)
+        res_y = abs(src.transform.e)
+        sample_dist = min(res_x, res_y)
+
+        for idx, row in gdf_lines.iterrows():
+            line = row.geometry
+            length = line.length
+
+            # Number of sample points along the line
+            n_samples = max(int(length / sample_dist) + 1, 2)
+
+            # Generate equidistant points along the line
+            distances = np.linspace(0, length, n_samples)
+            sample_pts = [line.interpolate(d) for d in distances]
+            coords = [(pt.x, pt.y) for pt in sample_pts]
+
+            # Sample the DEM
+            values = np.array([val[0] for val in src.sample(coords)], dtype=float)
+
+            # Compute median elevation
+            med_val = float(np.nanmedian(values))
+
+            # Find the sample point closest to that median
+            med_idx = int(np.nanargmin(np.abs(values - med_val)))
+            med_pt = Point(coords[med_idx])
+
+            # Endpoints
+            start_pt = Point(line.coords[0])
+            end_pt   = Point(line.coords[-1])
+
+            # Append three points (all carry the transect's median elevation)
+            for geom in (med_pt, start_pt, end_pt):
+                points.append({
+                    "geometry": geom,
+                    "elevation": med_val,
+                    # optionally: "transect_id": row.get("id", idx)
+                })
+
+    # Build GeoDataFrame and write out
+    gdf_pts = gpd.GeoDataFrame(points, crs=crs)
+    gdf_pts.to_file(output_gpkg, driver="GPKG", layer=layer_name)
+    print(f"Written {len(gdf_pts)} points to '{output_gpkg}' layer='{layer_name}'")
 
 # Use CLI args if provided, else defaults
 if __name__ == '__main__':
     # Default parameters for VSCode debugging
-    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\Transects_250ft.gpkg"
+    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\TransectsValley_400ft.gpkg"
     default_dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\AP_WallowaSunriseDEM\WallowaSunriseDEM\GRMW_unclipped_1ft_DEM.tif"
-    default_output_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\min_elev_points.gpkg"
+    default_output_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\min_elev_points_400ft.gpkg"
     
     if len(sys.argv) >= 4:
         parser = argparse.ArgumentParser(
