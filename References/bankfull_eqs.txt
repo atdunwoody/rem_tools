@@ -1,0 +1,10 @@
+# calculating baseflow width based on Legg & Olson 2015. Use area as mi^2. Output is in meters
+brat['bank_width'] = ft_to_meter * 1.16 * 0.91 * (brat['DA_miles'] ** 0.381) * (precip_in ** 0.634)
+
+# calculating baseflow depth based on Legg & Olson 2015. Uses area in km^2. Output is meters
+brat['bank_depth'] = 0.0939 * (brat['iGeo_DA'] ** 0.233) * (precip_cm ** 0.264)
+
+# brat['DA_miles']: drainage area in mi^2, precip (in)
+# brat['iGeo_DA']: drainage area in km^2, precip (cm)
+
+

@@ -1,0 +1,10 @@
+name: REM
+channels:
+  - defaults
+dependencies:
+  - geopandas
+  - shapely
+  - rasterio
+  - fiona
+  - rasterstats
+

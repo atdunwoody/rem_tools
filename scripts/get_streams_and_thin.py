@@ -98,7 +98,31 @@ def get_streams(
             n=thin_n
         )
 
+    add_max_flow_accum_to_stream(streams_gpkg, flow_accum)
+    
     return streams_gpkg, streams_raster, filled_dem, d8_pointer, flow_accum, thinned_gpkg
+
+
+def add_max_flow_accum_to_stream(streams_gpkg, flow_accum_raster):
+
+    from rasterstats import zonal_stats
+
+    # Load the streams layer
+    streams_gdf = gpd.read_file(streams_gpkg)
+
+    # Buffer each stream by 1 meter
+    streams_gdf['buffered_geometry'] = streams_gdf.geometry.buffer(1)
+
+    # Calculate the maximum flow accumulation value for each buffered stream
+    with rasterio.open(flow_accum_raster) as src:
+        stats = zonal_stats(streams_gdf['buffered_geometry'], flow_accum_raster, stats="max", nodata=src.nodata)
+        
+    # Add the maximum flow accumulation value to the GeoDataFrame
+    streams_gdf['flow_accum_max'] = [stat['max'] for stat in stats]
+
+    # Save the updated GeoDataFrame back to the GeoPackage
+    streams_gdf = streams_gdf.drop(columns='buffered_geometry')  # Drop the buffered geometry column if not needed
+    streams_gdf.to_file(streams_gpkg, driver="GPKG")
 
 
 def thin_centerline(
@@ -140,7 +164,10 @@ def thin_centerline(
 
 
 if __name__ == "__main__":
-    dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\AP_WallowaSunriseDEM\WallowaSunriseDEM\GRMW_unclipped_1ft_DEM.tif"
-    out_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\Streams"
+    dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\rasters_USGS10m\USGS 10m DEM Clip.tif"
+    output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\Streams"
+    thresholds = [1000, 10000, 100000]
+    for threshold in thresholds:
+        sub_out_dir = os.path.join(output_dir, f"Streams_{threshold/1000}k")
+        get_streams(dem, sub_out_dir, threshold=threshold, overwrite=False, breach_depressions=True, thin_n=10)
 
-    get_streams(dem, out_dir, threshold=100000, overwrite=True, thin_n=10)

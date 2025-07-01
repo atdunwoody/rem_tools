@@ -42,7 +42,6 @@ def create_transects(input_gpkg, output_gpkg, spacing, transect_length=100):
     transect_gdf = gpd.GeoDataFrame(transects, crs=gdf.crs)
     transect_gdf.to_file(output_gpkg, driver="GPKG")
 
-
 def get_normal(line, distance, delta=0.01):
     """Compute unit normal vector at given distance along the line."""
     d1 = max(distance - delta, 0)
