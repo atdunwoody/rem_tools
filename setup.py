@@ -23,7 +23,7 @@ setup(
     description="Relative Elevation Model (REM) creation toolkit",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/atdunwoody/REM",
+    url="https://github.com/atdunwoody/rem_tools",
     packages=find_packages(),  # Automatically find all packages and subpackages
     install_requires=[
         # List your project dependencies here, e.g.,
