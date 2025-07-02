@@ -3,44 +3,62 @@ import numpy as np
 from shapely.geometry import LineString, MultiLineString, Point
 from shapely.ops import linemerge
 import math
+from rasterstats import zonal_stats
+import rasterio
+from rasterstats import zonal_stats
+
+import geopandas as gpd
+from shapely.geometry import Point, LineString, MultiLineString
+from shapely.ops import linemerge
 
 def create_transects(input_gpkg, output_gpkg, spacing, transect_length=100):
-    # Read input centerline
-    gdf = gpd.read_file(input_gpkg)
     
-    # Merge multilines if necessary
-    if len(gdf) > 1 or isinstance(gdf.geometry.iloc[0], MultiLineString):
-        merged = linemerge(gdf.geometry.unary_union)
-        if isinstance(merged, MultiLineString):
-            merged = max(merged, key=lambda l: l.length)
-        centerline = merged
-    else:
-        centerline = gdf.geometry.iloc[0]
+    print(f"Creating transects from {input_gpkg} with spacing {spacing}m and transect length {transect_length}m...")
+    # Read all centerline features
+    gdf = gpd.read_file(input_gpkg)
 
-    # Create transects
     transects = []
-    distance = 0
-    total_length = centerline.length
+    for idx, row in gdf.iterrows():
+        geom = row.geometry
 
-    while distance <= total_length:
-        point = centerline.interpolate(distance)
-        normal = get_normal(centerline, distance)
+        # If MultiLineString, merge and pick the longest branch
+        if isinstance(geom, MultiLineString):
+            merged = linemerge(geom)
+            if isinstance(merged, MultiLineString):
+                merged = max(merged.geoms, key=lambda l: l.length)
+            centerline = merged
+        else:
+            centerline = geom
 
-        # Create transect line (centered on point)
-        dx = (transect_length / 2.0) * normal[0]
-        dy = (transect_length / 2.0) * normal[1]
-        p1 = Point(point.x - dx, point.y - dy)
-        p2 = Point(point.x + dx, point.y + dy)
-        transect_line = LineString([p1, p2])
-        
-        # Compute station label
-        station_label = format_station(distance)
-        transects.append({"geometry": transect_line, "station": station_label})
-        
-        distance += spacing
+        total_length = centerline.length
+        distance = 0.0
 
+        # Step along this centerline
+        while distance <= total_length:
+            pt = centerline.interpolate(distance)
+            nx, ny = get_normal(centerline, distance)
+
+            # Build transect centered on pt
+            half = transect_length / 2.0
+            p1 = Point(pt.x - half * nx, pt.y - half * ny)
+            p2 = Point(pt.x + half * nx, pt.y + half * ny)
+            transect = LineString([p1, p2])
+
+            transects.append({
+                "geometry": transect,
+                "station": format_station(distance),
+                "centerline_id": idx,
+                "bank_depth_m": row.get("bank_depth_m", None),
+                "bank_width_m": row.get("bank_width_m", None),
+            })
+
+            distance += spacing
+
+    # Write out all transects
     transect_gdf = gpd.GeoDataFrame(transects, crs=gdf.crs)
+    
     transect_gdf.to_file(output_gpkg, driver="GPKG")
+    return output_gpkg
 
 def get_normal(line, distance, delta=0.01):
     """Compute unit normal vector at given distance along the line."""
@@ -64,8 +82,18 @@ def format_station(distance):
     main = station_int // 100
     return f"{main}+{plus:02d}"
 
+if __name__ == "__main__":
+    
+    # add_BF_dims(
+    # r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\test_REM\streams_100k_clip.gpkg",
+    # r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\PRISM_annual_clipped_EPSG_26911.tif",
+    # r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\test_REM\streams_100k_clip_BF.gpkg"
+    # )
+    streams_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\Streams\streams_100k_clipped_to_LiDAR.gpkg"
+    output_transects_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\transects_200m.gpkg"
 
-create_transects(r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\CenterlineValley.gpkg",
-                 r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\TransectsValley_400ft.gpkg", 
-                 spacing=400, 
-                 transect_length=1500)
+    create_transects(streams_gpkg,
+                 output_transects_gpkg,
+                 spacing=100,
+                 transect_length=200,
+                 )

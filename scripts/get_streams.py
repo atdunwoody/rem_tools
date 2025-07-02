@@ -7,16 +7,11 @@ import geopandas as gpd
 import rasterio
 from shapely.geometry import LineString, MultiLineString
 from typing import Optional, Tuple
+from rasterstats import zonal_stats
 
-def get_streams(
-    dem: str,
-    output_dir: str,
-    threshold: int = 100000,
-    overwrite: bool = False,
-    breach_depressions: bool = True,
-    thin_n: int = 10,
-    create_thinned: bool = True
-) -> Tuple[str, str, str, str, str, Optional[str]]:
+def get_streams(dem: str, output_dir: str, threshold: int = 100000, overwrite: bool = False,
+                breach_depressions: bool = True, thin_n: int = 10,
+                create_thinned: bool = True, precip_raster: Optional[str] = None):
     """
     Processes a DEM to extract streams, save them to a GeoPackage, and—
     optionally—create a thinned centerline layer.
@@ -98,13 +93,20 @@ def get_streams(
             n=thin_n
         )
 
-    add_max_flow_accum_to_stream(streams_gpkg, flow_accum)
-    
-    return streams_gpkg, streams_raster, filled_dem, d8_pointer, flow_accum, thinned_gpkg
+    add_DA_to_stream(streams_gpkg, flow_accum)
+    add_BF_dims_to_stream(streams_gpkg, precip_raster)
+    return streams_gpkg
 
-
-def add_max_flow_accum_to_stream(streams_gpkg, flow_accum_raster):
-
+def add_DA_to_stream(streams_gpkg, flow_accum_raster, unit: str = "m") -> None:
+    """
+    Adds a column to the streams GeoPackage with the drainage area (DA) in km²
+    by calculating the maximum flow accumulation value within a 1-meter buffer
+    around each stream.
+    Args:
+        streams_gpkg (str): Path to the GeoPackage containing the streams layer.
+        flow_accum_raster (str): Path to the flow accumulation raster.
+        unit (str): Unit of the flow accumulation raster. Either "m" for meters or "ft" for feet.
+    """
     from rasterstats import zonal_stats
 
     # Load the streams layer
@@ -116,22 +118,96 @@ def add_max_flow_accum_to_stream(streams_gpkg, flow_accum_raster):
     # Calculate the maximum flow accumulation value for each buffered stream
     with rasterio.open(flow_accum_raster) as src:
         stats = zonal_stats(streams_gdf['buffered_geometry'], flow_accum_raster, stats="max", nodata=src.nodata)
-        
+
+    if unit.lower() == "ft":
+        # Convert from square feet to square kilometers
+        # 1 square foot = 0.092903 square meters, and 1 square kilometer = 1,000,000 square meters
+        conversion_factor = (0.092903 / 1e6)
+    else:
+        # Assume unit is meters, so conversion factor is 1 (1 m² = 1 m²)
+        conversion_factor = 1e6
     # Add the maximum flow accumulation value to the GeoDataFrame
-    streams_gdf['flow_accum_max'] = [stat['max'] for stat in stats]
+    streams_gdf['DA_km2'] = [stat['max'] for stat in stats] / conversion_factor  # Convert from m² to km²
 
     # Save the updated GeoDataFrame back to the GeoPackage
     streams_gdf = streams_gdf.drop(columns='buffered_geometry')  # Drop the buffered geometry column if not needed
     streams_gdf.to_file(streams_gpkg, driver="GPKG")
 
+def add_BF_dims_to_stream(streams_gpkg_path: str, precip_raster_path: str) -> None:
+    """
+    Reads stream features from a GeoPackage, computes mean annual precipitation (cm)
+    for each feature based on intersecting PRISM raster data, adds a new precip field,
+    then computes bankfull width (m) and depth (m) using Legg & Olson 2015.
 
-def thin_centerline(
-    input_gpkg: str,
-    layer_name: str,
-    output_gpkg: str,
-    output_layer: Optional[str] = None,
-    n: int = 10
-) -> None:
+    Parameters
+    ----------
+    streams_gpkg_path : str
+        Path to the input streams GeoPackage.
+    precip_raster_path : str
+        Path to the input annual precipitation raster (PRISM .tif in mm).
+    output_gpkg_path : str
+        Path where the output GeoPackage (with new fields) will be written.
+    layer : str, optional
+        Name of the layer to read from the input GeoPackage. If None, the default
+        (first) layer will be used.
+    """
+    # constants
+    KM2_TO_MI2 = 0.386102          # km² → mi²
+    CM_TO_IN = 1.0 / 2.54          # cm → in
+    FT_TO_M = 0.3048               # ft → m
+
+    # 1. Read streams layer
+    streams = gpd.read_file(streams_gpkg_path)
+
+    # after reading:
+    streams = streams[streams.geometry.notnull()]
+    streams = streams[streams.is_valid]
+
+    
+    # 2. Compute per-feature mean precipitation (mm)
+    stats = zonal_stats(
+        streams,
+        precip_raster_path,
+        stats=['mean'],
+        geojson_out=False,
+        all_touched=True
+    )
+    mean_vals_mm = [s['mean'] for s in stats]
+
+    # 3. Convert from mm to cm and add field
+    streams['ann_precip_cm'] = [
+        mv / 10.0 if mv is not None else None
+        for mv in mean_vals_mm
+    ]
+
+    # 4. Compute drainage area in mi² and precip in inches
+    streams['DA_mi2'] = streams['DA_km2'] * KM2_TO_MI2
+    streams['ann_precip_in'] = streams['ann_precip_cm'] * CM_TO_IN
+
+    # 5. Bankfull width (m) based on Legg & Olson 2015:
+    #    width_ft = 1.16 * 0.91 * (DA_mi2^0.381) * (precip_in^0.634)
+    #    convert ft → m
+    streams['bank_width_m'] = (
+        FT_TO_M *
+        1.16 * 0.91 *
+        (streams['DA_mi2'] ** 0.381) *
+        (streams['ann_precip_in'] ** 0.634)
+    )
+
+    # 6. Bankfull depth (m) based on Legg & Olson 2015:
+    #    depth = 0.0939 * (DA_km2^0.233) * (precip_cm^0.264)
+    streams['bank_depth_m'] = (
+        0.0939 *
+        (streams['DA_km2'] ** 0.233) *
+        (streams['ann_precip_cm'] ** 0.264)
+    )
+
+    # 7. Write to new GeoPackage (overwrites if exists)
+    streams.to_file(streams_gpkg_path, driver='GPKG')
+    return streams_gpkg_path
+
+def thin_centerline( input_gpkg: str, layer_name: str, output_gpkg: str,
+    output_layer: Optional[str] = None, n: int = 10) -> None:
     """
     Keeps every nᵗʰ vertex in each LineString (or part of a MultiLineString)
     from the specified layer in input_gpkg, writing to output_gpkg.
@@ -165,9 +241,10 @@ def thin_centerline(
 
 if __name__ == "__main__":
     dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\rasters_USGS10m\USGS 10m DEM Clip.tif"
+    precip_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\precip\PRISM_annual_clipped_EPSG_26911.tif"
     output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\Streams"
-    thresholds = [1000, 10000, 100000]
-    for threshold in thresholds:
-        sub_out_dir = os.path.join(output_dir, f"Streams_{threshold/1000}k")
-        get_streams(dem, sub_out_dir, threshold=threshold, overwrite=False, breach_depressions=True, thin_n=10)
+    threshold = 10000
 
+    streams_gpkg_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\Streams\streams_100k_clipped_to_LiDAR.gpkg"
+    precip_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\precip\PRISM_annual_clipped_EPSG_26911.tif"
+    add_BF_dims_to_stream(streams_gpkg_path, precip_raster_path)

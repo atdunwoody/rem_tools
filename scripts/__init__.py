@@ -8,7 +8,7 @@ The `scripts` subpackage of rem_tools.
 from . import add_slope_to_centerline
 from . import create_transects
 from . import get_elevations_along_transect
-from . import get_streams_and_thin
+from . import get_streams
 from . import interpolate_points_to_raster
 from . import utils
 
@@ -16,7 +16,7 @@ __all__ = [
     "add_slope_to_centerline",
     "create_transects",
     "get_elevations_along_transect",
-    "get_streams_and_thin",
+    "get_streams",
     "interpolate_points_to_raster",
     "utils",
 ]

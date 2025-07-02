@@ -18,9 +18,55 @@ import geopandas as gpd
 import rasterio
 from shapely.geometry import Point
 import sys
+from sklearn.cluster import KMeans
 
-def extract_min_points(transect_gpkg: str, dem_path: str, output_gpkg: str, layer_name: str = "min_elev_points"):
+
+def cluster_points(
+    gdf: gpd.GeoDataFrame,
+    n_clusters: int = 11,
+    new_field: str = "cluster_id",):
+    """
+    Reads points from `input_gpkg_path`/`layer`, clusters them into `n_clusters` groups
+    based on XY proximity (KMeans), writes to `output_gpkg_path` with a new integer field.
+
+    Parameters
+    ----------
+    gdf : gpd.GeoDataFrame
+        Input GeoDataFrame containing point geometries.
+    output_gpkg_path : str
+        Path to output GeoPackage (will be created or overwritten).
+    n_clusters : int
+        Number of clusters to create.
+    new_field : str
+        Name of the new integer field to hold cluster IDs (1..n_clusters).
+    """
+
+    # 2. Reproject (if geographic, to a suitable projected CRS)
+    if gdf.crs.is_geographic:
+        # choose an appropriate local projection; here we use UTM zone of the centroid
+        centroid = gdf.unary_union.centroid
+        utm_crs = f"+proj=utm +zone={int((centroid.x + 180)//6)+1} +datum=WGS84 +units=m +no_defs"
+        gdf = gdf.to_crs(utm_crs)
+
+    # 3. Extract coordinates
+    coords = np.vstack([gdf.geometry.x, gdf.geometry.y]).T
+
+    # 4. Cluster
+    model = KMeans(n_clusters=n_clusters, random_state=0)
+    labels = model.fit_predict(coords)
+
+    # 5. Assign labels 1..n_clusters
+    gdf[new_field] = labels + 1
+
+    return gdf
+
+def extract_min_points(transect_gpkg: str,
+                       dem_path: str,
+                       output_gpkg: str,
+                       layer_name: str = "min_elev_points",
+                       flank_min_points: bool = False):
     # Read input transects
+    print("Extracting minimum elevation points from transects...")
     gdf_lines = gpd.read_file(transect_gpkg)
     crs = gdf_lines.crs
 
@@ -45,30 +91,52 @@ def extract_min_points(transect_gpkg: str, dem_path: str, output_gpkg: str, laye
             coords = [(pt.x, pt.y) for pt in sample_pts]
 
             # Sample the DEM
-            values = [val[0] for val in src.sample(coords)]
-            values = np.array(values, dtype=float)
+            values = np.array([val[0] for val in src.sample(coords)], dtype=float)
 
             # Identify minimum
             min_idx = int(np.nanargmin(values))
             min_val = float(values[min_idx])
             min_pt = Point(coords[min_idx])
 
-            # Endpoints
-            start_pt = Point(line.coords[0])
-            end_pt   = Point(line.coords[-1])
+            # Decide whether to keep elevation
+            elev = min_val if min_val > 0 else None
 
-            # Append three points
-            for geom in (min_pt, start_pt, end_pt):
+            if flank_min_points:
+                # Endpoints
+                start_pt = Point(line.coords[0])
+                end_pt   = Point(line.coords[-1])
+
+                # Append three points, elevation only if positive
+                for geom in (min_pt, start_pt, end_pt):
+                    points.append({
+                        "geometry":       geom,
+                        "elevation":      elev,
+                        "centerline_id":  row.get("centerline_id", idx),
+                        "station":        row.get("station", idx),
+                        "bank_depth_m":   row.get("bank_depth_m", None),
+                        "bank_width_m": row.get("bank_width_m", None),
+                    })
+            else:
+                # Append only the minimum point
                 points.append({
-                    "geometry": geom,
-                    "elevation": min_val,
-                    # optionally: "transect_id": row.get("id", idx)
+                    "geometry":       min_pt,
+                    "elevation":      elev,
+                    "centerline_id":  row.get("centerline_id", idx),
+                    "station":        row.get("station", idx),
+                    "bank_depth_m":   row.get("bank_depth_m", None),
+                    "bank_width_m": row.get("bank_width_m", None),
                 })
 
     # Build GeoDataFrame and write out
     gdf_pts = gpd.GeoDataFrame(points, crs=crs)
+    
+    # Drop any points with negative elevation
+    gdf_pts = gdf_pts[gdf_pts["elevation"] > 0]
+    gdf_pts = cluster_points(gdf_pts, n_clusters=11, new_field="cluster_id")
     gdf_pts.to_file(output_gpkg, driver="GPKG", layer=layer_name)
     print(f"Written {len(gdf_pts)} points to '{output_gpkg}' layer='{layer_name}'")
+    
+    return output_gpkg
 
 def extract_median_points(transect_gpkg: str,
                           dem_path: str,
@@ -137,38 +205,15 @@ def extract_median_points(transect_gpkg: str,
     gdf_pts = gpd.GeoDataFrame(points, crs=crs)
     gdf_pts.to_file(output_gpkg, driver="GPKG", layer=layer_name)
     print(f"Written {len(gdf_pts)} points to '{output_gpkg}' layer='{layer_name}'")
+    return output_gpkg
 
-# Use CLI args if provided, else defaults
 if __name__ == '__main__':
-    # Default parameters for VSCode debugging
-    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\TransectsValley_400ft.gpkg"
-    default_dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\AP_WallowaSunriseDEM\WallowaSunriseDEM\GRMW_unclipped_1ft_DEM.tif"
-    default_output_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\min_elev_points_400ft.gpkg"
+    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\transects_100m_BF.gpkg"
+    default_dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\water_surface\hdr.adf"
+    default_output_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\min_elev_points_100m_BF.gpkg"
     
-    if len(sys.argv) >= 4:
-        parser = argparse.ArgumentParser(
-            description="Create points at each transect's min-elevation pixel and its endpoints."
-        )
-        parser.add_argument("transect_gpkg",
-                            help="Input GeoPackage with transect lines")
-        parser.add_argument("dem_path",
-                            help="Input DEM raster file")
-        parser.add_argument("output_gpkg",
-                            help="Output GeoPackage to write point layer")
-        parser.add_argument("--layer-name", default="min_elev_points",
-                            help="Name of the output layer (default: min_elev_points)")
-        args = parser.parse_args()
-        
-        extract_min_points(
-            transect_gpkg=args.transect_gpkg,
-            dem_path=args.dem_path,
-            output_gpkg=args.output_gpkg,
-            layer_name=args.layer_name
-        )
-    else:
-        extract_min_points(
-            transect_gpkg=default_transect_gpkg,
-            dem_path=default_dem_path,
-            output_gpkg=default_output_gpkg,
-            layer_name=None  # Use default layer name if not provided
-        )
+    extract_min_points(
+        transect_gpkg=default_transect_gpkg,
+        dem_path=default_dem_path,
+        output_gpkg=default_output_gpkg,
+    )
