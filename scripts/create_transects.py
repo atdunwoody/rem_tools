@@ -89,11 +89,11 @@ if __name__ == "__main__":
     # r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\PRISM_annual_clipped_EPSG_26911.tif",
     # r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\test_REM\streams_100k_clip_BF.gpkg"
     # )
-    streams_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\Streams\streams_100k_clipped_to_LiDAR.gpkg"
-    output_transects_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\transects_200m.gpkg"
+    streams_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams\streams_100k_clipped_to_LiDAR.gpkg"
+    output_transects_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\transects_200m.gpkg"
 
     create_transects(streams_gpkg,
                  output_transects_gpkg,
-                 spacing=100,
-                 transect_length=200,
+                 spacing=200,
+                 transect_length=100,
                  )

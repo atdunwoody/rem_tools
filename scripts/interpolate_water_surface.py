@@ -152,7 +152,7 @@ if __name__ == "__main__":
     # Name of the attribute field holding elevation values
     elevation_field = "elevation"
     # Raster pixel size (in the same units as your GeoPackage CRS)
-    pixel_size     = 1.0
+    pixel_size     = 2.0
     # IDW parameters
     idw_power      = 2.0   # power parameter (controls distance weighting)
     idw_smoothing  = 1.0   # smoothing parameter (reduces bull’s-eye effect)

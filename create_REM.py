@@ -14,7 +14,7 @@ Steps:
 from scripts.get_streams import get_streams
 from scripts.create_transects import create_transects
 from scripts.get_elevations_along_transect import extract_min_points
-from scripts.interpolate_points_to_raster import interpolate_points_to_raster, difference_rasters
+from scripts.interpolate_water_surface import interpolate_water_surface, difference_rasters
 import os
 
 overwrite = False # Set to True if you want to overwrite existing files
@@ -22,9 +22,8 @@ overwrite = False # Set to True if you want to overwrite existing files
 dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\rasters_USGS10m\USGS 10m DEM Clip.tif"
 output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM"
 
-# stream_mask_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\Streams\streams_mask.gpkg"
-stream_mask_gpkg = None # If you don't have a mask, set this to None
-base_DEM_for_REM_diff = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\bare_earth\hdr.adf"
+water_surface_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\water_surface\hdr.adf"
+reference_DEM_for_REM_diff = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\bare_earth\hdr.adf"
 
 threshold = 10000 # Flow accum threshold in units of DEM (e.g. 10000 m²)
 
@@ -56,7 +55,7 @@ if not os.path.exists(min_elev_points_gpkg) or overwrite:
     # Extract minimum elevation points along transects
     # This will create points at the minimum elevation along each transect line
     # and at both ends of the transect.
-    min_elev_points_gpkg = extract_min_points(transect_gpkg, dem, min_elev_points_gpkg)
+    min_elev_points_gpkg = extract_min_points(transect_gpkg, water_surface_raster, min_elev_points_gpkg)
 
 # 4. Interpolate points to raster
 interpolated_min_raster = os.path.join(output_dir, "interpolated_HAWS.tif")
@@ -66,4 +65,4 @@ if not os.path.exists(interpolated_min_raster) or overwrite:
 # 5. Compute difference between original DEM and interpolated raster
 
 diff_output = os.path.join(output_dir, "REM_HAWS.tif")
-raster_difference(base_DEM_for_REM_diff, interpolatd_raster_clipped, diff_output)
+raster_difference(reference_DEM_for_REM_diff, interpolatd_raster_clipped, diff_output)

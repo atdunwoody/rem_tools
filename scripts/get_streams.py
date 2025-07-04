@@ -238,13 +238,18 @@ def thin_centerline( input_gpkg: str, layer_name: str, output_gpkg: str,
     out_layer = output_layer or layer_name
     gdf.to_file(output_gpkg, layer=out_layer, driver="GPKG")
 
-
 if __name__ == "__main__":
-    dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\rasters_USGS10m\USGS 10m DEM Clip.tif"
-    precip_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\precip\PRISM_annual_clipped_EPSG_26911.tif"
-    output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\Streams"
-    threshold = 10000
-
-    streams_gpkg_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\Streams\streams_100k_clipped_to_LiDAR.gpkg"
-    precip_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\precip\PRISM_annual_clipped_EPSG_26911.tif"
-    add_BF_dims_to_stream(streams_gpkg_path, precip_raster_path)
+    
+   dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\bathymetry.tif"
+   output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams_Bathymetry"
+   threshold = 100000  # 100k m²
+   get_streams(
+       dem=dem,
+       output_dir=output_dir,
+       threshold=threshold,
+       overwrite=True,
+       breach_depressions=True,
+       thin_n=10,
+       create_thinned=False,
+       precip_raster=None  # Optional, can be set to a PRISM raster path
+   )
