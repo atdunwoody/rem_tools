@@ -19,6 +19,7 @@ import rasterio
 from shapely.geometry import Point
 import sys
 from sklearn.cluster import KMeans
+import os
 
 
 def cluster_points(
@@ -77,6 +78,8 @@ def extract_min_points(transect_gpkg: str,
         res_x = abs(src.transform.a)
         res_y = abs(src.transform.e)
         sample_dist = min(res_x, res_y)
+        no_data_value = src.nodata
+        print(f"Creating points for this many lines: {len(gdf_lines)}")
 
         for idx, row in gdf_lines.iterrows():
             line = row.geometry
@@ -92,7 +95,8 @@ def extract_min_points(transect_gpkg: str,
 
             # Sample the DEM
             values = np.array([val[0] for val in src.sample(coords)], dtype=float)
-
+            # Mask no-data values
+            values = np.ma.masked_equal(values, no_data_value)
             # Identify minimum
             min_idx = int(np.nanargmin(values))
             min_val = float(values[min_idx])
@@ -132,7 +136,7 @@ def extract_min_points(transect_gpkg: str,
     
     # Drop any points with negative elevation
     gdf_pts = gdf_pts[gdf_pts["elevation"] > 0]
-    gdf_pts = cluster_points(gdf_pts, n_clusters=11, new_field="cluster_id")
+    #gdf_pts = cluster_points(gdf_pts, n_clusters=11, new_field="cluster_id")
     gdf_pts.to_file(output_gpkg, driver="GPKG", layer=layer_name)
     print(f"Written {len(gdf_pts)} points to '{output_gpkg}' layer='{layer_name}'")
     
@@ -208,12 +212,13 @@ def extract_median_points(transect_gpkg: str,
     return output_gpkg
 
 if __name__ == '__main__':
-    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\transects_100m_BF.gpkg"
+    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\low coverage manual\transects_10m_500m.gpkg"
     default_dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\water_surface\hdr.adf"
-    default_output_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\min_elev_points_100m_BF.gpkg"
-    
+    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points_10m.gpkg")
+
     extract_min_points(
         transect_gpkg=default_transect_gpkg,
         dem_path=default_dem_path,
         output_gpkg=default_output_gpkg,
+        flank_min_points=True
     )

@@ -100,6 +100,28 @@ def get_watersheds(d8_pntr, output_dir, watershed_name, pour_points=None, waters
     if not os.path.exists(watershed_vector):
         print("Polygonizing watershed raster...")
         polygonize_raster(watershed_raster, watershed_vector, attribute_name='WS_ID')
+    
+    #####################################################
+    ################ ADD WSE TO WATERSHEDS ################
+    #####################################################
+
+    # 1. read
+    pts = gpd.read_file(pour_points)
+    ws  = gpd.read_file(watershed_vector)
+    output_gpkg = os.path.join(output_dir, f"{watershed_name}_watersheds_with_elev.gpkg")
+    # 2. turn the DataFrame index (which corresponds to the GPKG FID) into a column named 'fid'
+    pts = pts.reset_index().rename(columns={'index': 'fid'})
+
+    # 3. merge the elevation into ws
+    ws = ws.merge(
+        pts[['fid', 'elevation']],
+        left_on='WS_ID',
+        right_on='fid',
+        how='left'
+    ).drop(columns=['fid'])
+
+    # 4. write out
+    ws.to_file(output_gpkg, driver="GPKG")
 
 def find_intersections(centerline_file, perpendiculars_file, output_file):
     """
@@ -377,9 +399,7 @@ from shapely.ops import unary_union
 
 def combine_features_by_ws_id(
     input_gpkg_path: str,
-    output_gpkg_path: str,
-
-) -> None:
+    output_gpkg_path: str,) -> None:
     """
     Dissolve all features in a GeoPackage by the 'WS_ID' field.
 
@@ -423,13 +443,31 @@ def combine_features_by_ws_id(
 
 if __name__ == "__main__":
     
-    d8_pointer = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams\d8_pointer.tif"
-    perps = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\transects_200m.gpkg"
-    stream_vector = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams\streams_100k_clipped_to_LiDAR.gpkg"
-    stream_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams\streams_100k.tif"
-    output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams 200m"
+    d8_pointer = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Watersheds Method\Bathy Streams\d8_pointer.tif"
+
+    stream_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Watersheds Method\Bathy Streams\streams_100k.tif"
+    pour_pts = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Watersheds Method\Bathy Streams\min_elev_points_10m.gpkg"
+    output_dir = os.path.dirname(pour_pts)
     
-    os.makedirs(output_dir, exist_ok=True)
+    get_watersheds(        
+        d8_pntr=d8_pointer,
+        output_dir=output_dir,
+        watershed_name="GRMW",
+        pour_points=pour_pts, 
+        stream_raster=stream_raster,
+    )
+    
+    wbt_watersheds = os.path.join(output_dir, "GRMW_watersheds.gpkg")
+    output_gpkg = os.path.join(output_dir, "GRMW_watersheds_dissolved.gpkg")
+    
+    combine_features_by_ws_id(
+        input_gpkg_path=wbt_watersheds,
+        output_gpkg_path=output_gpkg
+    )
+
+
+    # perps = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\transects_200m.gpkg"
+    # stream_vector = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams Clipped to LiDAR\streams_100k_clipped_to_LiDAR.gpkg"
     # get_watersheds(        
     #     d8_pntr=d8_pointer,
     #     output_dir=output_dir,
@@ -438,13 +476,3 @@ if __name__ == "__main__":
     #     stream_raster=stream_raster,
     #     perpendiculars=perps,
     # )
-    
-    pour_pts = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams\GRMW_pour_points_snapped.gpkg"
-    wbt_watersheds = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams\GRMW_watersheds.gpkg"
-    output_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Streams\GRMW_watersheds_aggregated.gpkg"
-    
-    
-    combine_features_by_ws_id(
-        input_gpkg_path=wbt_watersheds,
-        output_gpkg_path=output_gpkg
-    )

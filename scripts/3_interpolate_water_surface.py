@@ -6,6 +6,7 @@ import glob
 import rasterio
 from rasterio.merge import merge
 from rasterio.enums import Resampling
+import sys
 
 def interpolate_water_surface(
     gpkg_path: str,
@@ -13,9 +14,12 @@ def interpolate_water_surface(
     field: str,
     pix_size: float,
     power: float,
-    smoothing: float):
+    smoothing: float,
+    radius: float = None
+) -> None:
     """
-    Uses GDAL Grid (IDW) to interpolate point elevations to a TIFF.
+    Uses GDAL Grid (IDW) to interpolate point elevations to a TIFF,
+    showing live progress in the terminal.
     """
     ds = ogr.Open(gpkg_path)
     if ds is None:
@@ -25,6 +29,12 @@ def interpolate_water_surface(
     xmin, xmax, ymin, ymax = layer.GetExtent()
     x_res = math.ceil((xmax - xmin) / pix_size)
     y_res = math.ceil((ymax - ymin) / pix_size)
+    
+    # Build GridOptions as before
+    if radius is None:
+        alg = f"invdist:power={power}:smoothing={smoothing}:nodata=0"
+    else:
+        alg = f"invdist:power={power}:smoothing={smoothing}:radius1={radius}:radius2={radius}:nodata=0"
 
     grid_opts = gdal.GridOptions(
         format="GTiff",
@@ -33,15 +43,32 @@ def interpolate_water_surface(
         height=int(y_res),
         outputBounds=(xmin, ymin, xmax, ymax),
         zfield=field,
-        algorithm=f"invdist:power={power}:smoothing={smoothing}"
+        algorithm=alg
     )
 
+    # Custom progress callback
+    def progress(complete, message, _):
+        """
+        complete: float in [0.0, 1.0]
+        message: optional string from GDAL (often empty)
+        Return 1 to continue, 0 to abort.
+        """
+        pct = complete * 100
+        # \r returns cursor to start of line; end='' prevents newline
+        sys.stdout.write(f"\r[Interpolation] {pct:6.2f}% {message}")
+        sys.stdout.flush()
+        return 1
+
+    # Run the interpolation with our callback
     gdal.Grid(
         destName=out_path,
         srcDS=gpkg_path,
-        options=grid_opts
+        options=grid_opts,
+        callback=progress
     )
 
+    # Finish with a newline so the prompt isn’t stuck on the same line
+    print()
     print(f"[✔] Interpolation complete. Output raster: {out_path}")
 
 def merge_tifs(input_folder: str, output_path: str) -> None:
@@ -143,10 +170,9 @@ def difference_rasters(raster_path1: str, raster_path2: str, output_path: str):
 
 if __name__ == "__main__":
     
-    min_points_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\min_elev_points_100m_BF.gpkg"
-    gpkg_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\interpolated_HAWS"
-    output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM"
-    REM_reference_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\bathymetry.tif"
+    min_points_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\low coverage manual\min_elev_points_10m.gpkg"
+    output_dir = os.path.dirname(min_points_gpkg)
+    gpkg_dir = os.path.join(output_dir, "clusters")
     
     # ──────────────── Configuration ────────────────────
     # Name of the attribute field holding elevation values
@@ -154,39 +180,54 @@ if __name__ == "__main__":
     # Raster pixel size (in the same units as your GeoPackage CRS)
     pixel_size     = 2.0
     # IDW parameters
-    idw_power      = 2.0   # power parameter (controls distance weighting)
-    idw_smoothing  = 1.0   # smoothing parameter (reduces bull’s-eye effect)
+    idw_power      = 2.0   # power parameter (controls distance weighting) higher = more localized influence
+    idw_smoothing  = 1.0   # smoothing parameter (reduces bull’s-eye effect) greater than 1 = more smoothing
+    # Set to half the max valley width in the network
+    idw_radius     = 500   # search radius for IDW interpolation
 
     # ────────────────────────────────────────────────────
     
-    os.makedirs(gpkg_dir, exist_ok=True)
-    # Create a new gpkg for each unique cluster_id
-    import geopandas as gpd
-    min_points_gdf = gpd.read_file(min_points_gpkg)
-    clusters = min_points_gdf["cluster_id"].unique()
-    for cluster in clusters:    
-        cluster_gdf = min_points_gdf[min_points_gdf["cluster_id"] == cluster]
-        cluster_gpkg = os.path.join(gpkg_dir, f"cluster_{cluster}.gpkg")
-        cluster_gdf.to_file(cluster_gpkg, driver="GPKG")
-        print(f"[✔] Created GeoPackage for cluster {cluster}: {cluster_gpkg}")
+        
+    output_WS_raster = os.path.join(output_dir, "min_points_interpolated_radius_bathy.tif")
+    interpolate_water_surface(
+        gpkg_path    = min_points_gpkg,
+        out_path     = output_WS_raster,
+        field        = elevation_field,
+        pix_size     = pixel_size,
+        power        = idw_power,
+        smoothing    = idw_smoothing,
+        radius       = idw_radius  
+    )
     
-    gpkg_list = [f for f in os.listdir(gpkg_dir) if f.endswith('.gpkg')]
-    # Interpolate point elevations
-    for gpkg_file in gpkg_list:
-        output_WS_raster = os.path.join(gpkg_dir, f"{gpkg_file[:-5]}.tif")
-        gpkg_file = os.path.join(gpkg_dir, gpkg_file)
-
-        interpolate_water_surface(
-            gpkg_path    = gpkg_file,
-            out_path     = output_WS_raster,
-            field        = elevation_field,
-            pix_size     = pixel_size,
-            power        = idw_power,
-            smoothing    = idw_smoothing
-        )
-
-    interpolated_min_raster = os.path.join(output_dir, "interpolated_HAWS.tif")
-    merge_tifs(gpkg_dir, interpolated_min_raster)
+    # os.makedirs(gpkg_dir, exist_ok=True)
+    # # Create a new gpkg for each unique cluster_id
+    # import geopandas as gpd
+    # min_points_gdf = gpd.read_file(min_points_gpkg)
+    # clusters = min_points_gdf["cluster_id"].unique()
+    # for cluster in clusters:    
+    #     cluster_gdf = min_points_gdf[min_points_gdf["cluster_id"] == cluster]
+    #     cluster_gpkg = os.path.join(gpkg_dir, f"cluster_{cluster}.gpkg")
+    #     cluster_gdf.to_file(cluster_gpkg, driver="GPKG")
+    #     print(f"[✔] Created GeoPackage for cluster {cluster}: {cluster_gpkg}")
     
-    diff_output = os.path.join(output_dir, "REM_HAWS.tif")
-    difference_rasters(REM_reference_raster, interpolated_min_raster, diff_output)
+    # gpkg_list = [f for f in os.listdir(gpkg_dir) if f.endswith('.gpkg')]
+    # # Interpolate point elevations
+    # for gpkg_file in gpkg_list:
+    #     output_WS_raster = os.path.join(gpkg_dir, f"{gpkg_file[:-5]}.tif")
+    #     gpkg_file = os.path.join(gpkg_dir, gpkg_file)
+
+    #     interpolate_water_surface(
+    #         gpkg_path    = gpkg_file,
+    #         out_path     = output_WS_raster,
+    #         field        = elevation_field,
+    #         pix_size     = pixel_size,
+    #         power        = idw_power,
+    #         smoothing    = idw_smoothing    
+    #     )
+
+    # interpolated_min_raster = os.path.join(output_dir, "interpolated_bathy.tif")
+    # merge_tifs(gpkg_dir, interpolated_min_raster)
+    
+    # diff_output = os.path.join(output_dir, "REM_bathy-WSE_interpolated.tif")
+    # difference_rasters(REM_reference_raster, output_WS_raster, diff_output)
+    
