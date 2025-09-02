@@ -1,4 +1,16 @@
 # get_watersheds.py
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional, Literal
+import numpy as np
+import geopandas as gpd
+import fiona
+from rasterio.enums import Resampling
+from rasterio.vrt import WarpedVRT
+from rasterio.mask import mask
+from shapely.geometry import mapping
+
 
 import os
 import geopandas as gpd
@@ -441,29 +453,46 @@ def combine_features_by_ws_id(
     )
 
 
+
 if __name__ == "__main__":
     
-    d8_pointer = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Watersheds Method\Bathy Streams\d8_pointer.tif"
+    d8_pointer = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Streams\d8_pointer.tif"
 
-    stream_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Watersheds Method\Bathy Streams\streams_100k.tif"
-    pour_pts = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Watersheds Method\Bathy Streams\min_elev_points_10m.gpkg"
-    output_dir = os.path.dirname(pour_pts)
+    stream_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Streams\streams_5k.tif"
+    pour_pts = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\GitHub\BSR_viewer\data\inputs\CRITFC FLIR\CCR_2010_FLIR_CRITFC_corr_UTM.gpkg"
+    dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\rasters_USGS10m\USGS 10m DEM Clip.tif"
+    flow_accum = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing\FLIR Data\flow_accum.tif"
+    output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing"
     
-    get_watersheds(        
-        d8_pntr=d8_pointer,
-        output_dir=output_dir,
-        watershed_name="GRMW",
-        pour_points=pour_pts, 
-        stream_raster=stream_raster,
+
+    output_gpkg = os.path.join(output_dir, "CCR_2010_FLIR_CRITFC_corr_with_DA.gpkg")
+    # add_DA_from_flow_accum(
+    #     points_gpkg=pour_pts,
+    #     flow_accum_raster=flow_accum,
+    #     out_gpkg=output_gpkg
+    # )
+
+    add_point_elevations_from_dem(
+        points_gpkg=output_gpkg,
+        dem_path=dem,
+        out_gpkg=output_gpkg
     )
+
+    # get_watersheds(
+    #     d8_pntr=d8_pointer,
+    #     output_dir=output_dir,
+    #     watershed_name="CCR",
+    #     pour_points=pour_pts, 
+    #     stream_raster=stream_raster,
+    # )
+
+    # wbt_watersheds = os.path.join(output_dir, "CCR_watersheds.gpkg")
+    # output_gpkg = os.path.join(output_dir, "CCR_watersheds_dissolved.gpkg")
     
-    wbt_watersheds = os.path.join(output_dir, "GRMW_watersheds.gpkg")
-    output_gpkg = os.path.join(output_dir, "GRMW_watersheds_dissolved.gpkg")
-    
-    combine_features_by_ws_id(
-        input_gpkg_path=wbt_watersheds,
-        output_gpkg_path=output_gpkg
-    )
+    # combine_features_by_ws_id(
+    #     input_gpkg_path=wbt_watersheds,
+    #     output_gpkg_path=output_gpkg
+    # )
 
 
     # perps = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\transects_200m.gpkg"

@@ -88,8 +88,12 @@ def create_transects(input_gpkg, output_gpkg, spacing, transect_length=100):
                 "geometry": transect,
                 "station": format_station(distance),
                 "centerline_id": idx,
-                "bank_depth_m": row.get("bank_depth_m", None),
-                "bank_width_m": row.get("bank_width_m", None),
+                "DA_km2": row.get("DA_km2", None),
+                "BF_width_Legg_m": row.get("BF_width_Legg_m", None),
+                "BF_depth_Legg_m": row.get("BF_depth_Legg_m", None),
+                "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
+                "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
+                "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
             })
 
             distance += spacing
@@ -101,18 +105,119 @@ def create_transects(input_gpkg, output_gpkg, spacing, transect_length=100):
     return output_gpkg
 
 
+import geopandas as gpd
+from shapely.geometry import Point, LineString, MultiLineString
+from shapely.ops import linemerge
+from shapely.validation import make_valid
+
+def create_bendy_transects(input_gpkg, output_gpkg, spacing, transect_length=100):
+    """
+    Creates transects from centerlines in input_gpkg, bending transects slightly 
+    to avoid intersecting previously created transects. Processes centerlines 
+    from largest to smallest drainage area (DA_km2). Skips any transect that cannot be
+    de‑conflicted.
+    """
+    # read & repair
+    gdf = gpd.read_file(input_gpkg)
+    try:
+        gdf["geometry"] = gdf.geometry.apply(make_valid)
+    except ImportError:
+        gdf["geometry"] = gdf.geometry.buffer(0)
+
+    # drop empties & zero‑length\    
+    gdf = gdf[~gdf.geometry.is_empty]
+    gdf = gdf[gdf.geometry.length > 0]
+
+    # sort by descending drainage area
+    gdf = gdf.sort_values("DA_km2", ascending=False)
+
+    existing = []   # list of LineString or multi‑vertex transects
+    transects = []
+
+    for idx, row in gdf.iterrows():
+        geom = row.geometry
+        # collapse MultiLineString to its longest branch
+        if isinstance(geom, MultiLineString):
+            merged = linemerge(geom)
+            if isinstance(merged, MultiLineString):
+                merged = max(merged.geoms, key=lambda l: l.length)
+            centerline = merged
+        else:
+            centerline = geom
+
+        total_length = centerline.length
+        dist = 0.0
+
+        while dist <= total_length:
+            pt = centerline.interpolate(dist)
+            if pt.is_empty:
+                dist += spacing
+                continue
+
+            normal = get_normal(centerline, dist)
+            if normal is None:
+                dist += spacing
+                continue
+            nx, ny = normal
+
+            half = transect_length / 2.0
+            p1 = Point(pt.x - half * nx, pt.y - half * ny)
+            p2 = Point(pt.x + half * nx, pt.y + half * ny)
+            straight = LineString([p1, p2])
+
+            # does it hit any existing transect?
+            if not any(straight.intersects(e) for e in existing):
+                chosen = straight
+            else:
+                # try a single-bend: offset the midpoint by transect_length/4
+                bend_off = transect_length / 4.0
+                chosen = None
+                for sign in (1, -1):
+                    mid = Point(pt.x + sign * bend_off * nx,
+                                pt.y + sign * bend_off * ny)
+                    bend_line = LineString([p1, mid, p2])
+                    if not any(bend_line.intersects(e) for e in existing):
+                        chosen = bend_line
+                        break
+                if chosen is None:
+                    dist += spacing
+                    continue  # skip this station
+
+            # accept & record
+            existing.append(chosen)
+            transects.append({
+                "geometry": chosen,
+                "station": format_station(dist),
+                "centerline_id": idx,
+                "DA_km2": row.get("DA_km2"),
+                "BF_width_Legg_m": row.get("BF_width_Legg_m"),
+                "BF_depth_Legg_m": row.get("BF_depth_Legg_m"),
+                "BF_width_Castro_m": row.get("BF_width_Castro_m"),
+                "BF_depth_Castro_m": row.get("BF_depth_Castro_m"),
+                "BF_width_Beechie_m": row.get("BF_width_Beechie_m"),
+            })
+
+            dist += spacing
+
+    # write out
+    out_gdf = gpd.GeoDataFrame(transects, crs=gdf.crs)
+    out_gdf.to_file(output_gpkg, driver="GPKG")
+    print(f"[✔] Created bendy transects GeoPackage: {output_gpkg}")
+    return output_gpkg
+
+
 if __name__ == "__main__":
-    streams_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\low coverage manual\manual_centerline_fixed.gpkg"
-    spacing = 10  # meters
-    transect_length = 500  # meters
+    streams_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Wallowa\AP_WallowaSunrise_Terrain\Streams\streams_100k.gpkg"
+    spacing = 100  # meters
+    transect_length = 1  # meters
     output_transects_gpkg = os.path.join(
         os.path.dirname(streams_gpkg),
-        f"transects_{spacing}m_{transect_length}m.gpkg"
+        f"transects_bendy_{spacing}m_{transect_length}m.gpkg"
     )
 
-    create_transects(
+    create_bendy_transects(
         streams_gpkg,
         output_transects_gpkg,
+        transect_length=transect_length,
         spacing=spacing,
-        transect_length=transect_length
     )

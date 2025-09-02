@@ -64,7 +64,6 @@ def cluster_points(
 def extract_min_points(transect_gpkg: str,
                        dem_path: str,
                        output_gpkg: str,
-                       layer_name: str = "min_elev_points",
                        flank_min_points: bool = False):
     # Read input transects
     print("Extracting minimum elevation points from transects...")
@@ -117,8 +116,12 @@ def extract_min_points(transect_gpkg: str,
                         "elevation":      elev,
                         "centerline_id":  row.get("centerline_id", idx),
                         "station":        row.get("station", idx),
-                        "bank_depth_m":   row.get("bank_depth_m", None),
-                        "bank_width_m": row.get("bank_width_m", None),
+                        "DA_km2": row.get("DA_km2", None),
+                        "BF_width_Legg_m": row.get("BF_width_Legg_m", None),
+                        "BF_depth_Legg_m": row.get("BF_depth_Legg_m", None),
+                        "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
+                        "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
+                        "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
                     })
             else:
                 # Append only the minimum point
@@ -126,9 +129,12 @@ def extract_min_points(transect_gpkg: str,
                     "geometry":       min_pt,
                     "elevation":      elev,
                     "centerline_id":  row.get("centerline_id", idx),
-                    "station":        row.get("station", idx),
-                    "bank_depth_m":   row.get("bank_depth_m", None),
-                    "bank_width_m": row.get("bank_width_m", None),
+                    "DA_km2": row.get("DA_km2", None),
+                    "BF_width_Legg_m": row.get("BF_width_Legg_m", None),
+                    "BF_depth_Legg_m": row.get("BF_depth_Legg_m", None),
+                    "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
+                    "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
+                    "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
                 })
 
     # Build GeoDataFrame and write out
@@ -137,8 +143,8 @@ def extract_min_points(transect_gpkg: str,
     # Drop any points with negative elevation
     gdf_pts = gdf_pts[gdf_pts["elevation"] > 0]
     #gdf_pts = cluster_points(gdf_pts, n_clusters=11, new_field="cluster_id")
-    gdf_pts.to_file(output_gpkg, driver="GPKG", layer=layer_name)
-    print(f"Written {len(gdf_pts)} points to '{output_gpkg}' layer='{layer_name}'")
+    gdf_pts.to_file(output_gpkg, driver="GPKG")
+    print(f"Written {len(gdf_pts)} points to '{output_gpkg}'")
     
     return output_gpkg
 
@@ -212,9 +218,9 @@ def extract_median_points(transect_gpkg: str,
     return output_gpkg
 
 if __name__ == '__main__':
-    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\low coverage manual\transects_10m_500m.gpkg"
-    default_dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\water_surface\hdr.adf"
-    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points_10m.gpkg")
+    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\20250725\small_area_test\transects_single.gpkg"
+    default_dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\WSE.tif"
+    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points.gpkg")
 
     extract_min_points(
         transect_gpkg=default_transect_gpkg,

@@ -111,37 +111,14 @@ def segment_and_compute_slope(input_gpkg: str,
 # Use CLI args if provided, else defaults
 if __name__ == '__main__':
     # Default parameters for VSCode debugging
-    default_input = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\Streams\streams_100k.gpkg"
-    default_dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\AP_WallowaSunriseDEM\WallowaSunriseDEM\GRMW_unclipped_1ft_DEM.tif"
-    default_output = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20250006_Wallowa R Remeander (AP)\07_GIS\Data\REM\Streams\CenterlineWithSlope.gpkg"
-    default_interval = 200.0
+    default_input = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Wallowa\AP_WallowaSunrise_Terrain\Streams\streams_100k.gpkg"
+    default_dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Wallowa\AP_WallowaSunrise_Terrain\output_USGS10m_EPSG6559.tif"
+    default_output = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Wallowa\AP_WallowaSunrise_Terrain\Streams\streams_100k_with_slope.gpkg"
+    default_interval = 50.0
 
-    if len(sys.argv) >= 4:
-        parser = argparse.ArgumentParser(
-            description="Segment a centerline and compute slope from a DEM.")
-        parser.add_argument('input_gpkg', help='Input GeoPackage with centerline')
-        parser.add_argument('dem_path', help='Input DEM raster (e.g., GeoTIFF)')
-        parser.add_argument('output_gpkg', help='Output GeoPackage for segmented centerline')
-        parser.add_argument('interval', type=float, help='Segmentation interval (in CRS units)')
-        args = parser.parse_args()
-
-        segment_and_compute_slope(
-            input_gpkg=args.input_gpkg,
-            dem_path=args.dem_path,
-            output_gpkg=args.output_gpkg,
-            interval=args.interval,
-            layer=args.layer
-        )
-    else:
-        # Use defaults when run via VSCode without CLI args
-        print("No CLI arguments detected; using default parameters.\n"
-              f"input: {default_input}\n"
-              f"DEM: {default_dem}\n"
-              f"output: {default_output}\n"
-              f"interval: {default_interval}\n")
-        segment_and_compute_slope(
-            input_gpkg=default_input,
-            dem_path=default_dem,
-            output_gpkg=default_output,
-            interval=default_interval,
-        )
+    segment_and_compute_slope(
+        input_gpkg=default_input,
+        dem_path=default_dem,
+        output_gpkg=default_output,
+        interval=default_interval,
+    )

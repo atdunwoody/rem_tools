@@ -56,9 +56,9 @@ def replace_raster(base_raster_path: str,
             dst.write(out_data, 1)
 
 
-base_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\REM_WSE-bathy_interpolated_radius.tif"
-replacement_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\low coverage manual\REM_bathy-WSE_min_points_replacement_mask.tif"
-output_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\combined corrected REM\REM_bathy-WSE interpolated_radius_corrected.tif"
+base_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\REM_bathy-WSE interpolated_radius_corrected.tif"
+replacement_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\20250725\REM_bathy-_WSE_rand_points_valid.tif"
+output_raster_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\combined corrected REM\min_points_interpolated_radius_WSE_corrected_v2.tif"
 replace_raster(base_raster_path,
                 replacement_raster_path,
                 output_raster_path

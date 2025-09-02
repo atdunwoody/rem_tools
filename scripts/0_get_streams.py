@@ -8,6 +8,9 @@ import rasterio
 from shapely.geometry import LineString, MultiLineString
 from typing import Optional, Tuple
 from rasterstats import zonal_stats
+import geopandas as gpd
+import fiona
+
 
 def get_streams(dem: str, output_dir: str, threshold: int = 100000, overwrite: bool = False,
                 breach_depressions: bool = True, thin_n: int = 10,
@@ -267,11 +270,11 @@ def add_BF_to_streams_Beechie(streams_gpkg_path: str) -> None:
     # 2. Compute bankfull width (m) based on Beechie and IMAKI 2013:
     P_cm_yr = 72.17  # average annual precipitation in cm for the GRMW basin based on PRISM
     streams['BF_width_Beechie_m'] = 0.177 * ((streams['DA_km2']) ** 0.397) * P_cm_yr ** 0.453
+    streams['BF_depth_Beechie_m'] = streams['BF_width_Beechie_m'] * streams['BF_depth_Castro_m'] / streams['BF_width_Castro_m']
 
     # 4. Write to new GeoPackage (overwrites if exists)
     streams.to_file(streams_gpkg_path, driver='GPKG')
     return streams_gpkg_path
-
 
 def thin_centerline( input_gpkg: str, layer_name: str, output_gpkg: str,
     output_layer: Optional[str] = None, n: int = 10) -> None:
@@ -305,12 +308,44 @@ def thin_centerline( input_gpkg: str, layer_name: str, output_gpkg: str,
     out_layer = output_layer or layer_name
     gdf.to_file(output_gpkg, layer=out_layer, driver="GPKG")
 
+def threshold_lines_by_length(
+    input_gpkg: str,
+    output_gpkg: str,
+    threshold: float = 1200.0
+) -> None:
+    """
+    Read the first layer of `input_gpkg`, keep only LineString/MultiLineString
+    features longer than `threshold` (in CRS units, typically metres), and
+    write them to `output_gpkg` in the same layer name.
+    """
+    # get first layer name
+    layers = fiona.listlayers(input_gpkg)
+    if not layers:
+        raise ValueError(f"No layers found in {input_gpkg!r}")
+    layer = layers[0]
+
+    # load features
+    gdf = gpd.read_file(input_gpkg, layer=layer)
+
+    # select only line geometries
+    is_line = gdf.geometry.type.isin(["LineString", "MultiLineString"])
+    lines = gdf[is_line].copy()
+
+    # compute length (in CRS units)
+    lines["__length"] = lines.geometry.length
+
+    # filter by threshold
+    filtered = lines[lines["__length"] > threshold].drop(columns="__length")
+
+    # write back, preserving layer name
+    filtered.to_file(output_gpkg, layer=layer, driver="GPKG")
+
+
+
 if __name__ == "__main__":
-    
-   #dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Streams_Bathymetry\Batheymetry_5m.tif"
-   dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\rasters_USGS10m\USGS 10m DEM Clip.tif"
-   output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Bankfull Regression\Streams"
-   threshold = 100000  # 100k m²
+   dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing\FLIR Data\burned_dem.tif"
+   output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing\FLIR Data\burned_streams"
+   threshold = 1000  # 1000 m²
    get_streams(
        dem=dem,
        output_dir=output_dir,
@@ -321,3 +356,4 @@ if __name__ == "__main__":
        create_thinned=True,
        precip_raster=None  # Optional, can be set to a PRISM raster path
    )
+
