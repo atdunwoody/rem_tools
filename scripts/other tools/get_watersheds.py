@@ -456,16 +456,17 @@ def combine_features_by_ws_id(
 
 if __name__ == "__main__":
     
-    d8_pointer = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Streams\d8_pointer.tif"
-
-    stream_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Streams\streams_5k.tif"
-    pour_pts = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\GitHub\BSR_viewer\data\inputs\CRITFC FLIR\CCR_2010_FLIR_CRITFC_corr_UTM.gpkg"
-    dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\rasters_USGS10m\USGS 10m DEM Clip.tif"
-    flow_accum = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing\FLIR Data\flow_accum.tif"
-    output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing"
+    d8_pointer = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240009_TVPI Irrigation Pipe (MSRF)\04_Analysis\Hydrology\Streams\d8_pointer.tif"
+    flow_accum = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240009_TVPI Irrigation Pipe (MSRF)\04_Analysis\Hydrology\Streams\flow_accum.tif"
+    stream_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240009_TVPI Irrigation Pipe (MSRF)\04_Analysis\Hydrology\Streams\streams_7000k.tif"
+    
+    pour_pts = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240009_TVPI Irrigation Pipe (MSRF)\04_Analysis\Hydrology\Streams\Twisp_pour_points_snapped.shp"
+    dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240009_TVPI Irrigation Pipe (MSRF)\07_GIS\LiDAR\output_USGS10m.tif"
     
 
-    output_gpkg = os.path.join(output_dir, "CCR_2010_FLIR_CRITFC_corr_with_DA.gpkg")
+    output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240009_TVPI Irrigation Pipe (MSRF)\04_Analysis\Hydrology\Streams"
+    output_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240009_TVPI Irrigation Pipe (MSRF)\04_Analysis\Hydrology\Streams\Twisp_pour_points_snapped_w_elev.shp"
+    
     # add_DA_from_flow_accum(
     #     points_gpkg=pour_pts,
     #     flow_accum_raster=flow_accum,
@@ -478,13 +479,13 @@ if __name__ == "__main__":
         out_gpkg=output_gpkg
     )
 
-    # get_watersheds(
-    #     d8_pntr=d8_pointer,
-    #     output_dir=output_dir,
-    #     watershed_name="CCR",
-    #     pour_points=pour_pts, 
-    #     stream_raster=stream_raster,
-    # )
+    get_watersheds(
+        d8_pntr=d8_pointer,
+        output_dir=output_dir,
+        watershed_name="Twisp",
+        pour_points=pour_pts, 
+        stream_raster=stream_raster,
+    )
 
     # wbt_watersheds = os.path.join(output_dir, "CCR_watersheds.gpkg")
     # output_gpkg = os.path.join(output_dir, "CCR_watersheds_dissolved.gpkg")

@@ -26,7 +26,7 @@ def interpolate_water_surface(
     dropping any points where `field` is NULL.
     """
     print(f"Interpolating water surface from {gpkg_path} to {out_path}...")
-    print(f"Using field '{field}', pixel size {pix_size}m, power {power}, "
+    print(f"Using field '{field}', pixel size {pix_size}, power {power}, "
           f"smoothing {smoothing}, radius {radius}")
 
     # open vector and get layer
@@ -184,29 +184,23 @@ def difference_rasters(raster_path1: str, raster_path2: str, output_path: str):
 
 if __name__ == "__main__":
     
-    min_points_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\20250725\small_area_test\min_elev_points.gpkg"
+    min_points_gpkg = r"C:\L\OneDrive - Lichen\Documents\Projects\SF Toutle Brownell\REM\loch_trouble\min_elev_points_loch_trouble_2025.gpkg"
 
     output_dir = os.path.dirname(min_points_gpkg)
-    output_WS_raster = os.path.join(output_dir, "interpolated_WSE.tif")
-    gpkg_dir = os.path.join(output_dir, "clusters")
+    output_WS_raster = os.path.join(output_dir, "interpolated_WSE_loch_trouble_2025.tif")
     
     # ──────────────── Configuration ────────────────────
     # Name of the attribute field holding elevation values
     elevation_field = "elevation"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
-    #elevation_field = "BF_depth_Castro_m"
-    #elevation_field = "BF_depth_Beechie_m"
-    output_WS_raster = os.path.join(output_dir, "interpolated_WSE.tif")
     # Raster pixel size (in the same units as your GeoPackage CRS)
-    pixel_size     = 2.0
+    pixel_size     = 3
     # IDW parameters
-    idw_power      = 2.0   # power parameter (controls distance weighting) higher = more localized influence
+    idw_power      = 1.0   # power parameter (controls distance weighting) higher = more localized influence
     idw_smoothing  = 1.0   # smoothing parameter (reduces bull’s-eye effect) greater than 1 = more smoothing
     # Set to half the max valley width in the network
-    idw_radius     = 750   # search radius for IDW interpolation
+    idw_radius     = 750 * 3   # search radius for IDW interpolation
 
     # ────────────────────────────────────────────────────
-    
-        
     
     interpolate_water_surface(
         gpkg_path    = min_points_gpkg,
@@ -219,9 +213,14 @@ if __name__ == "__main__":
     )
     
 
-    # REM_reference_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\LiDAR\grmw_rasters\bare_earth\hdr.adf"
-    # output_WS_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\combined corrected REM\min_points_interpolated_radius_WSE_corrected_ndv.tif"
-
-    # diff_output = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\combined corrected REM\REM_bathy-WSE_interpolated_radius_corrected.tif"
-    # difference_rasters(REM_reference_raster, output_WS_raster, diff_output)
-    
+    # elevation_field = "BF_depth_Legg_m"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
+    # output_WS_raster = os.path.join(output_dir, "BF_depth_Legg_m.tif")
+    # interpolate_water_surface(
+    #     gpkg_path    = min_points_gpkg,
+    #     out_path     = output_WS_raster,
+    #     field        = elevation_field,
+    #     pix_size     = pixel_size,
+    #     power        = idw_power,
+    #     smoothing    = idw_smoothing,
+    #     radius       = idw_radius  
+    # )

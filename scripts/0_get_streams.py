@@ -343,17 +343,16 @@ def threshold_lines_by_length(
 
 
 if __name__ == "__main__":
-   dem = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing\FLIR Data\burned_dem.tif"
-   output_dir = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\Web App Processing\FLIR Data\burned_streams"
-   threshold = 1000  # 1000 m²
+   dem = r"C:\L\OneDrive - Lichen\Documents\Projects\Atlas\FDAT\DEM_30m.tif"
+   output_dir = r"C:\L\OneDrive - Lichen\Documents\Projects\Atlas\FDAT\Streams_30m"
+   threshold = 1000  # ft²
    get_streams(
        dem=dem,
        output_dir=output_dir,
        threshold=threshold,
        overwrite=False,
-       breach_depressions=True,
-       thin_n=10,
-       create_thinned=True,
+       breach_depressions=False,
+       create_thinned=False,
        precip_raster=None  # Optional, can be set to a PRISM raster path
    )
 

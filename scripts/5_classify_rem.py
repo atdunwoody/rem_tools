@@ -75,16 +75,10 @@ def classify_raster(input_raster_path: str,
 if __name__ == "__main__":
 
 
-    input_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Projects\20240007_Atlas Process (GRMW)\07_GIS\Data\REM\REM_bathy-WSE_interpolated_radius.tif"
-    #reference_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Bankfull Regression\BF_depth_Castro_m_interpolated.tif"
-    # reference_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Bankfull Regression\Beechie\interpolated_Beechie_BFD.tif"
-    # output_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Bankfull Regression\Beechie\REM_cat_Beechie.tif"
-
-    # classify_raster(input_raster, reference_raster, output_raster)
-    # print(f"Classification completed. Output saved to {output_raster}")
+    input_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Marketing\Proposals\Ukiah Meadows UCSWCD\REM\REM_HAWS_clipped.tif"
     
-    reference_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Bankfull Regression\Beechie\interpolated_Beechie_Castro_avg__BFD.tif"
-    output_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Bankfull Regression\Beechie\REM_cat_Castro_Beechie_avg.tif"
+    reference_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Marketing\Proposals\Ukiah Meadows UCSWCD\REM\BF_depth_Legg_m.tif"
+    output_raster = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Lichen Drive\Marketing\Proposals\Ukiah Meadows UCSWCD\REM\REM_HAWS_cat_Legg.tif"
 
     classify_raster(input_raster, reference_raster, output_raster)
     print(f"Classification completed. Output saved to {output_raster}")

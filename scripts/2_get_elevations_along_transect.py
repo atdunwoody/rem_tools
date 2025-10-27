@@ -82,7 +82,20 @@ def extract_min_points(transect_gpkg: str,
 
         for idx, row in gdf_lines.iterrows():
             line = row.geometry
+
+            # Skip invalid or missing geometries
+            if line is None or line.is_empty:
+                print(f"Skipping row {idx}: empty or null geometry")
+                continue
+
+            if line.geom_type not in ("LineString", "MultiLineString"):
+                print(f"Skipping row {idx}: geometry type {line.geom_type} not supported")
+                continue
+
             length = line.length
+            if length == 0:
+                print(f"Skipping row {idx}: zero-length line")
+                continue
 
             # Number of sample points along the line
             n_samples = max(int(length / sample_dist) + 1, 2)
@@ -218,9 +231,9 @@ def extract_median_points(transect_gpkg: str,
     return output_gpkg
 
 if __name__ == '__main__':
-    default_transect_gpkg = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\Voronoi Method\20250725\small_area_test\transects_single.gpkg"
-    default_dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Atlas\REM\WSE.tif"
-    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points.gpkg")
+    default_transect_gpkg = r"C:\L\OneDrive - Lichen\Documents\Projects\SF Toutle Brownell\REM\loch_trouble\transects_bendy_smooth_30.0m_200.0m.gpkg"
+    default_dem_path = r"C:\L\OneDrive - Lichen\Documents\Projects\SF Toutle Brownell\REM\loch_trouble\2025_dem_3ft.tif"
+    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points_loch_trouble_2025.gpkg")
 
     extract_min_points(
         transect_gpkg=default_transect_gpkg,
