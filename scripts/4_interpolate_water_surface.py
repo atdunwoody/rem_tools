@@ -184,21 +184,21 @@ def difference_rasters(raster_path1: str, raster_path2: str, output_path: str):
 
 if __name__ == "__main__":
     
-    min_points_gpkg = r"C:\L\OneDrive - Lichen\Documents\Projects\SF Toutle Brownell\REM\loch_trouble\min_elev_points_loch_trouble_2025.gpkg"
-
+    # min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\UKFP\min_elev_points.gpkg"
+    min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Leidl\min_elev_points.gpkg"
     output_dir = os.path.dirname(min_points_gpkg)
-    output_WS_raster = os.path.join(output_dir, "interpolated_WSE_loch_trouble_2025.tif")
-    
+    output_WS_raster = os.path.join(output_dir, "interpolated_WSE.tif")
+
     # ──────────────── Configuration ────────────────────
     # Name of the attribute field holding elevation values
     elevation_field = "elevation"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
     # Raster pixel size (in the same units as your GeoPackage CRS)
     pixel_size     = 3
     # IDW parameters
-    idw_power      = 1.0   # power parameter (controls distance weighting) higher = more localized influence
-    idw_smoothing  = 1.0   # smoothing parameter (reduces bull’s-eye effect) greater than 1 = more smoothing
+    idw_power      = 2   # default 2. power parameter (controls distance weighting) higher = more localized influence
+    idw_smoothing  = 1   # default 1. smoothing parameter (reduces bull’s-eye effect) greater than 1 = more smoothing
     # Set to half the max valley width in the network
-    idw_radius     = 750 * 3   # search radius for IDW interpolation
+    idw_radius     = 1200   # search radius for IDW interpolation
 
     # ────────────────────────────────────────────────────
     

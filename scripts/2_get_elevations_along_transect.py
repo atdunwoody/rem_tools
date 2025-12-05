@@ -231,9 +231,10 @@ def extract_median_points(transect_gpkg: str,
     return output_gpkg
 
 if __name__ == '__main__':
-    default_transect_gpkg = r"C:\L\OneDrive - Lichen\Documents\Projects\SF Toutle Brownell\REM\loch_trouble\transects_bendy_smooth_30.0m_200.0m.gpkg"
-    default_dem_path = r"C:\L\OneDrive - Lichen\Documents\Projects\SF Toutle Brownell\REM\loch_trouble\2025_dem_3ft.tif"
-    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points_loch_trouble_2025.gpkg")
+    default_transect_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Leidl\transects.gpkg"
+
+    default_dem_path = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Leidl\Leidl_DEM_3ft.tif"
+    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points.gpkg")
 
     extract_min_points(
         transect_gpkg=default_transect_gpkg,
