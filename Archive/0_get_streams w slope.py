@@ -306,102 +306,6 @@ def add_DA_to_stream(
     streams.to_file(streams_gpkg, driver="GPKG")
 
 
-def add_BF_to_streams_Legg(
-    streams_gpkg_path: str, precip_raster_path: str = None
-) -> None:
-    """
-    Reads stream features from a GeoPackage, computes mean annual precipitation (cm)
-    for each feature based on intersecting PRISM raster data (optional), adds a new precip field,
-    then computes bankfull width (m) and depth (m) using Legg & Olson 2015.
-    """
-    # constants
-    KM2_TO_MI2 = 0.386102  # km² → mi²
-    CM_TO_IN = 1.0 / 2.54  # cm → in
-    FT_TO_M = 0.3048       # ft → m
-
-    # 1. Read streams layer
-    streams = gpd.read_file(streams_gpkg_path)
-
-    streams = streams[streams.geometry.notnull()]
-    streams = streams[streams.is_valid]
-
-    # For now: use basin-average precip for GRMW as a constant
-    streams["DA_mi2"] = streams["DA_km2"] * KM2_TO_MI2
-    streams["ann_precip_in"] = 72.17 * CM_TO_IN  # 72.17 cm → inches
-    streams["ann_precip_cm"] = 72.17             # 72.17 cm (GRMW basin mean)
-
-    # 5. Bankfull width (m) based on Legg & Olson 2015:
-    #    width_ft = 1.16 * 0.91 * (DA_mi2^0.381) * (precip_in^0.634)
-    streams["BF_width_Legg_m"] = (
-        FT_TO_M
-        * 1.16
-        * 0.91
-        * (streams["DA_mi2"] ** 0.381)
-        * (streams["ann_precip_in"] ** 0.634)
-    )
-
-    # 6. Bankfull depth (m) based on Legg & Olson 2015:
-    #    depth = 0.0939 * (DA_km2^0.233) * (precip_cm^0.264)
-    streams["BF_depth_Legg_m"] = (
-        0.0939
-        * (streams["DA_km2"] ** 0.233)
-        * (streams["ann_precip_cm"] ** 0.264)
-    )
-
-    # 7. Write to GeoPackage (overwrites)
-    streams.to_file(streams_gpkg_path, driver="GPKG")
-    return streams_gpkg_path
-
-
-def add_BF_to_streams_Castro(streams_gpkg_path: str) -> None:
-    """
-    Reads stream features from a GeoPackage, computes bankfull width (m) and depth (m)
-    using Castro & Jackson 2001.
-    """
-    streams = gpd.read_file(streams_gpkg_path)
-
-    km2_to_mi2 = 0.386102  # km² to mi²
-    ft_to_m = 0.3048       # ft to m
-
-    # width_m = ft_to_m * 9.40 * (DA_mi2) ** 0.42
-    streams["BF_width_Castro_m"] = ft_to_m * 9.40 * (
-        (streams["DA_km2"] * km2_to_mi2) ** 0.42
-    )
-
-    # depth_ft = 0.61 * DA_mi2 ** 0.33
-    streams["BF_depth_Castro_m"] = ft_to_m * 0.61 * (
-        (streams["DA_km2"] * km2_to_mi2) ** 0.33
-    )
-
-    streams.to_file(streams_gpkg_path, driver="GPKG")
-    return streams_gpkg_path
-
-
-def add_BF_to_streams_Beechie(streams_gpkg_path: str) -> None:
-    """
-    Reads stream features from a GeoPackage, computes bankfull width (m) and depth (m)
-    using Beechie and IMAKI 2013.
-    """
-    streams = gpd.read_file(streams_gpkg_path)
-
-    # average annual precipitation in cm for the GRMW basin based on PRISM
-    P_cm_yr = 72.17
-
-    streams["BF_width_Beechie_m"] = (
-        0.177 * ((streams["DA_km2"]) ** 0.397) * P_cm_yr ** 0.453
-    )
-
-    # Depth scaled using Castro width/depth ratio
-    streams["BF_depth_Beechie_m"] = (
-        streams["BF_width_Beechie_m"]
-        * streams["BF_depth_Castro_m"]
-        / streams["BF_width_Castro_m"]
-    )
-
-    streams.to_file(streams_gpkg_path, driver="GPKG")
-    return streams_gpkg_path
-
-
 def thin_centerline(
     input_gpkg: str,
     layer_name: str,
@@ -590,9 +494,9 @@ def threshold_lines_by_length(
 
 
 if __name__ == "__main__":
-    dem = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Yedlick\yedlick_DEM_1.5ft.tif"
-    output_dir = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Yedlick\\streams"
-    threshold = 5000000  # contributing area threshold (cell count * cell_area²)
+    dem = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Minam RIver\output_USGS1m.tif"
+    output_dir = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Minam RIver\Streams_1m\with slope"
+    threshold = 5700000  # contributing area threshold (cell count * cell_area²)
     get_streams(
         dem=dem,
         output_dir=output_dir,
@@ -601,5 +505,5 @@ if __name__ == "__main__":
         breach_depressions=True,
         create_thinned=False,
         precip_raster=None,   # Optional, can be set to a PRISM raster path
-        segment_length=200.0, # in *feet*; converted internally to CRS units
+        segment_length=15*30*3.28, # in feet, will be converted to CRS units
     )

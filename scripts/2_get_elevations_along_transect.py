@@ -16,56 +16,90 @@ import argparse
 import numpy as np
 import geopandas as gpd
 import rasterio
-from shapely.geometry import Point
-import sys
+from shapely.geometry import Point, LineString, MultiLineString
+from shapely.ops import linemerge
 from sklearn.cluster import KMeans
 import os
 
 
-def cluster_points(
-    gdf: gpd.GeoDataFrame,
-    n_clusters: int = 11,
-    new_field: str = "cluster_id",):
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+def _as_single_line(geom):
     """
-    Reads points from `input_gpkg_path`/`layer`, clusters them into `n_clusters` groups
-    based on XY proximity (KMeans), writes to `output_gpkg_path` with a new integer field.
-
-    Parameters
-    ----------
-    gdf : gpd.GeoDataFrame
-        Input GeoDataFrame containing point geometries.
-    output_gpkg_path : str
-        Path to output GeoPackage (will be created or overwritten).
-    n_clusters : int
-        Number of clusters to create.
-    new_field : str
-        Name of the new integer field to hold cluster IDs (1..n_clusters).
+    Return a LineString suitable for .coords and .interpolate().
+    - If geom is LineString: return it
+    - If geom is MultiLineString:
+        * try linemerge -> may produce LineString
+        * if still multipart, pick the longest LineString component
+    Returns None if cannot produce a usable line.
     """
+    if geom is None or geom.is_empty:
+        return None
 
-    # 2. Reproject (if geographic, to a suitable projected CRS)
-    if gdf.crs.is_geographic:
-        # choose an appropriate local projection; here we use UTM zone of the centroid
-        centroid = gdf.unary_union.centroid
-        utm_crs = f"+proj=utm +zone={int((centroid.x + 180)//6)+1} +datum=WGS84 +units=m +no_defs"
-        gdf = gdf.to_crs(utm_crs)
+    gtype = geom.geom_type
+    if gtype == "LineString":
+        return geom
 
-    # 3. Extract coordinates
-    coords = np.vstack([gdf.geometry.x, gdf.geometry.y]).T
+    if gtype == "MultiLineString":
+        # Try to merge connected parts into one line
+        merged = linemerge(geom)
+        if merged.geom_type == "LineString":
+            return merged
+        elif merged.geom_type == "MultiLineString":
+            parts = list(merged.geoms)
+            if not parts:
+                return None
+            return max(parts, key=lambda g: g.length)
 
-    # 4. Cluster
-    model = KMeans(n_clusters=n_clusters, random_state=0)
-    labels = model.fit_predict(coords)
+    # Not supported
+    return None
 
-    # 5. Assign labels 1..n_clusters
-    gdf[new_field] = labels + 1
 
-    return gdf
+def _safe_endpoints(line: LineString):
+    """
+    Get (start_point, end_point) from a LineString.
+    """
+    coords = list(line.coords)
+    if len(coords) < 2:
+        return None, None
+    return Point(coords[0]), Point(coords[-1])
 
-def extract_min_points(transect_gpkg: str,
-                       dem_path: str,
-                       output_gpkg: str,
-                       flank_min_points: bool = False):
-    # Read input transects
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+def extract_elevations_along_transect(
+    transect_gpkg: str,
+    dem_path: str,
+    output_gpkg: str,
+    flank_min_points: bool = False,
+    method: str = "min",
+):
+    if method == "min":
+        return extract_min_points(
+            transect_gpkg=transect_gpkg,
+            dem_path=dem_path,
+            output_gpkg=output_gpkg,
+            flank_min_points=flank_min_points,
+        )
+    elif method == "median":
+        return extract_median_points(
+            transect_gpkg=transect_gpkg,
+            dem_path=dem_path,
+            output_gpkg=output_gpkg,
+            layer_name="median_elev_points",
+            flank_points=flank_min_points,
+        )
+    else:
+        raise ValueError(f"Unknown method: {method}\nValid options are 'min' or 'median'.")
+
+
+def extract_min_points(
+    transect_gpkg: str,
+    dem_path: str,
+    output_gpkg: str,
+    flank_min_points: bool = False,
+):
     print("Extracting minimum elevation points from transects...")
     gdf_lines = gpd.read_file(transect_gpkg)
     crs = gdf_lines.crs
@@ -73,172 +107,204 @@ def extract_min_points(transect_gpkg: str,
     points = []
 
     with rasterio.open(dem_path) as src:
-        # DEM pixel size
         res_x = abs(src.transform.a)
         res_y = abs(src.transform.e)
         sample_dist = min(res_x, res_y)
         no_data_value = src.nodata
+
         print(f"Creating points for this many lines: {len(gdf_lines)}")
 
         for idx, row in gdf_lines.iterrows():
-            line = row.geometry
+            raw_geom = row.geometry
+            line = _as_single_line(raw_geom)
 
-            # Skip invalid or missing geometries
             if line is None or line.is_empty:
-                print(f"Skipping row {idx}: empty or null geometry")
-                continue
-
-            if line.geom_type not in ("LineString", "MultiLineString"):
-                print(f"Skipping row {idx}: geometry type {line.geom_type} not supported")
+                print(f"Skipping row {idx}: empty/invalid or unsupported geometry ({getattr(raw_geom, 'geom_type', None)})")
                 continue
 
             length = line.length
-            if length == 0:
+            if length <= 0:
                 print(f"Skipping row {idx}: zero-length line")
                 continue
 
-            # Number of sample points along the line
+            # Sample along the line
             n_samples = max(int(length / sample_dist) + 1, 2)
-
-            # Generate equidistant points along the line
             distances = np.linspace(0, length, n_samples)
             sample_pts = [line.interpolate(d) for d in distances]
             coords = [(pt.x, pt.y) for pt in sample_pts]
 
-            # Sample the DEM
             values = np.array([val[0] for val in src.sample(coords)], dtype=float)
-            # Mask no-data values
-            values = np.ma.masked_equal(values, no_data_value)
-            # Identify minimum
-            min_idx = int(np.nanargmin(values))
+
+            # Mask nodata if defined
+            if no_data_value is not None and not np.isnan(no_data_value):
+                values = np.ma.masked_equal(values, no_data_value)
+
+            # If everything is masked, skip
+            if np.ma.is_masked(values) and values.mask.all():
+                print(f"Skipping row {idx}: all sampled DEM values are nodata")
+                continue
+
+            # Min (safe for masked arrays)
+            min_idx = int(values.argmin())
             min_val = float(values[min_idx])
             min_pt = Point(coords[min_idx])
 
-            # Decide whether to keep elevation
             elev = min_val if min_val > 0 else None
 
             if flank_min_points:
-                # Endpoints
-                start_pt = Point(line.coords[0])
-                end_pt   = Point(line.coords[-1])
+                start_pt, end_pt = _safe_endpoints(line)
+                if start_pt is None or end_pt is None:
+                    print(f"Skipping row {idx}: could not determine endpoints")
+                    continue
 
-                # Append three points, elevation only if positive
                 for geom in (min_pt, start_pt, end_pt):
-                    points.append({
-                        "geometry":       geom,
-                        "elevation":      elev,
-                        "centerline_id":  row.get("centerline_id", idx),
-                        "station":        row.get("station", idx),
+                    points.append(
+                        {
+                            "geometry": geom,
+                            "elevation": elev,
+                            "centerline_id": row.get("centerline_id", idx),
+                            "station": row.get("station", idx),
+                            "DA_km2": row.get("DA_km2", None),
+                            "BF_width_Legg_m": row.get("BF_width_Legg_m", None),
+                            "BF_depth_Legg_m": row.get("BF_depth_Legg_m", None),
+                            "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
+                            "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
+                            "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
+                        }
+                    )
+            else:
+                points.append(
+                    {
+                        "geometry": min_pt,
+                        "elevation": elev,
+                        "centerline_id": row.get("centerline_id", idx),
                         "DA_km2": row.get("DA_km2", None),
                         "BF_width_Legg_m": row.get("BF_width_Legg_m", None),
                         "BF_depth_Legg_m": row.get("BF_depth_Legg_m", None),
                         "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
                         "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
                         "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
-                    })
-            else:
-                # Append only the minimum point
-                points.append({
-                    "geometry":       min_pt,
-                    "elevation":      elev,
-                    "centerline_id":  row.get("centerline_id", idx),
-                    "DA_km2": row.get("DA_km2", None),
-                    "BF_width_Legg_m": row.get("BF_width_Legg_m", None),
-                    "BF_depth_Legg_m": row.get("BF_depth_Legg_m", None),
-                    "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
-                    "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
-                    "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
-                })
+                    }
+                )
 
-    # Build GeoDataFrame and write out
     gdf_pts = gpd.GeoDataFrame(points, crs=crs)
-    
-    # Drop any points with negative elevation
-    gdf_pts = gdf_pts[gdf_pts["elevation"] > 0]
-    #gdf_pts = cluster_points(gdf_pts, n_clusters=11, new_field="cluster_id")
+
+    # Drop null/negative elevations (guard if column missing / empty)
+    if not gdf_pts.empty and "elevation" in gdf_pts.columns:
+        gdf_pts = gdf_pts.dropna(subset=["elevation"])
+        gdf_pts = gdf_pts[gdf_pts["elevation"] > 0]
+
+    # gdf_pts = cluster_points(gdf_pts, n_clusters=11, new_field="cluster_id")
     gdf_pts.to_file(output_gpkg, driver="GPKG")
     print(f"Written {len(gdf_pts)} points to '{output_gpkg}'")
-    
+
     return output_gpkg
 
-def extract_median_points(transect_gpkg: str,
-                          dem_path: str,
-                          output_gpkg: str,
-                          layer_name: str = "median_elev_points"):
-    """
-    Extract median-elevation points and endpoints for transect lines.
 
-    For each line in the input GeoPackage, samples the DEM at
-    intervals equal to the raster resolution, finds the median
-    elevation and its location, then creates three points:
-      - The location of the median elevation
-      - The start vertex of the line
-      - The end vertex of the line
-
-    All points carry the median elevation under the field "elevation".
-    Results are saved to a new layer in an output GeoPackage.
+def extract_median_points(
+    transect_gpkg: str,
+    dem_path: str,
+    output_gpkg: str,
+    layer_name: str = "median_elev_points",
+    flank_points: bool = True,
+):
     """
-    # Read input transects
+    Extract median-elevation point (closest sampled point to median) and optionally endpoints.
+
+    - Handles MultiLineString safely (merge/longest-part)
+    - Masks nodata (if defined)
+    """
     gdf_lines = gpd.read_file(transect_gpkg)
     crs = gdf_lines.crs
 
     points = []
 
     with rasterio.open(dem_path) as src:
-        # DEM pixel size
         res_x = abs(src.transform.a)
         res_y = abs(src.transform.e)
         sample_dist = min(res_x, res_y)
+        no_data_value = src.nodata
 
         for idx, row in gdf_lines.iterrows():
-            line = row.geometry
+            raw_geom = row.geometry
+            line = _as_single_line(raw_geom)
+
+            if line is None or line.is_empty:
+                print(f"Skipping row {idx}: empty/invalid or unsupported geometry ({getattr(raw_geom, 'geom_type', None)})")
+                continue
+
             length = line.length
+            if length <= 0:
+                print(f"Skipping row {idx}: zero-length line")
+                continue
 
-            # Number of sample points along the line
             n_samples = max(int(length / sample_dist) + 1, 2)
-
-            # Generate equidistant points along the line
             distances = np.linspace(0, length, n_samples)
             sample_pts = [line.interpolate(d) for d in distances]
             coords = [(pt.x, pt.y) for pt in sample_pts]
 
-            # Sample the DEM
             values = np.array([val[0] for val in src.sample(coords)], dtype=float)
 
-            # Compute median elevation
-            med_val = float(np.nanmedian(values))
+            # Mask nodata if defined
+            if no_data_value is not None and not np.isnan(no_data_value):
+                values = np.ma.masked_equal(values, no_data_value)
 
-            # Find the sample point closest to that median
-            med_idx = int(np.nanargmin(np.abs(values - med_val)))
+            # If everything is masked, skip
+            if np.ma.is_masked(values) and values.mask.all():
+                print(f"Skipping row {idx}: all sampled DEM values are nodata")
+                continue
+
+            # Median of unmasked values
+            med_val = float(np.ma.median(values))
+
+            # Find sample point closest to that median (use filled array for abs diff)
+            filled = np.ma.filled(values, np.nan)
+            med_idx = int(np.nanargmin(np.abs(filled - med_val)))
             med_pt = Point(coords[med_idx])
 
-            # Endpoints
-            start_pt = Point(line.coords[0])
-            end_pt   = Point(line.coords[-1])
+            if flank_points:
+                start_pt, end_pt = _safe_endpoints(line)
+                if start_pt is None or end_pt is None:
+                    print(f"Skipping row {idx}: could not determine endpoints")
+                    continue
 
-            # Append three points (all carry the transect's median elevation)
-            for geom in (med_pt, start_pt, end_pt):
-                points.append({
-                    "geometry": geom,
-                    "elevation": med_val,
-                    # optionally: "transect_id": row.get("id", idx)
-                })
+                for geom in (med_pt, start_pt, end_pt):
+                    points.append(
+                        {
+                            "geometry": geom,
+                            "elevation": med_val,
+                            "centerline_id": row.get("centerline_id", idx),
+                            "station": row.get("station", idx),
+                        }
+                    )
+            else:
+                points.append(
+                    {
+                        "geometry": med_pt,
+                        "elevation": med_val,
+                        "centerline_id": row.get("centerline_id", idx),
+                        "station": row.get("station", idx),
+                    }
+                )
 
-    # Build GeoDataFrame and write out
     gdf_pts = gpd.GeoDataFrame(points, crs=crs)
     gdf_pts.to_file(output_gpkg, driver="GPKG", layer=layer_name)
     print(f"Written {len(gdf_pts)} points to '{output_gpkg}' layer='{layer_name}'")
     return output_gpkg
 
-if __name__ == '__main__':
-    default_transect_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Leidl\transects.gpkg"
 
-    default_dem_path = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Leidl\Leidl_DEM_3ft.tif"
-    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points.gpkg")
+# -----------------------------------------------------------------------------
+# Entrypoint
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    default_transect_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\transects clipped.gpkg"
+    default_dem_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\Topography\2016_USDA_DEM.tif"
+    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "median_elev_points.gpkg")
 
-    extract_min_points(
+    extract_elevations_along_transect(
         transect_gpkg=default_transect_gpkg,
         dem_path=default_dem_path,
         output_gpkg=default_output_gpkg,
-        flank_min_points=True
+        method="median",          # "min" for HAWS or "median" for GGL
+        flank_min_points=True,    # include endpoints too
     )

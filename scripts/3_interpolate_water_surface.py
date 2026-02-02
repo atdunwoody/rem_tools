@@ -132,73 +132,101 @@ def merge_tifs(input_folder: str, output_path: str) -> None:
     for src in srcs:
         src.close()
 
-def difference_rasters(raster_path1: str, raster_path2: str, output_path: str):
-    """
-    Compute the difference (raster1 - raster2) and write to a new raster.
+import numpy as np
+import rasterio
+from rasterio.warp import reproject, Resampling
 
-    Parameters
-    ----------
-    raster_path1 : str
-        File path to the first input raster (minuend).
-    raster_path2 : str
-        File path to the second input raster (subtrahend).
-    output_path : str
-        File path for the output difference raster.
+def difference_rasters(raster_path1: str, raster_path2: str, output_path: str,
+                       resampling: Resampling = Resampling.bilinear,
+                       out_dtype=np.float32,
+                       nodata_out=None):
     """
-    print(f"Computing difference: \n{raster_path1} \n       - \n{raster_path2} \n       =\n{output_path}")
-    # Open first raster and read data & profile
+    Compute difference raster1 - raster2 on raster1's grid and write GeoTIFF.
+    """
+
+    print(f"Computing difference:\n{raster_path1}\n  -\n{raster_path2}\n  =\n{output_path}")
+
     with rasterio.open(raster_path1) as src1:
         arr1 = src1.read(1, masked=True)
         profile = src1.profile.copy()
-    print(f"Raster shape: {arr1.shape}, dtype: {arr1.dtype}, nodata: {profile.get('nodata', None)}")
-    # Open second raster, resample if needed, then read data
+        dst_crs = src1.crs
+        dst_transform = src1.transform
+        dst_height = src1.height
+        dst_width = src1.width
+
+        nodata1 = src1.nodata
+
     with rasterio.open(raster_path2) as src2:
-        # Ensure same shape & transform
-        if (src2.width, src2.height) != (profile['width'], profile['height']) or src2.transform != profile['transform']:
-            arr2 = src2.read(
-                1,
-                out_shape=(src2.count,
-                           profile['height'],
-                           profile['width']),
-                resampling=Resampling.bilinear
-            )[0]
-        else:
-            arr2 = src2.read(1, masked=True)
-    print(f"Raster shapes: {arr1.shape} vs {arr2.shape}")
-    # Compute difference, preserving mask
-    diff = np.ma.subtract(arr1, arr2)
-    print(f"Difference shape: {diff.shape}, dtype: {diff.dtype}")
-    # override the driver before writing
+        # Prepare destination array for raster2 reprojected onto raster1 grid
+        arr2 = np.empty((dst_height, dst_width), dtype=out_dtype)
+
+        # pick nodata for src2 if present; needed to avoid smearing invalids
+        nodata2 = src2.nodata
+
+        reproject(
+            source=rasterio.band(src2, 1),
+            destination=arr2,
+            src_transform=src2.transform,
+            src_crs=src2.crs,
+            src_nodata=nodata2,
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            dst_nodata=nodata2,
+            resampling=resampling,
+        )
+
+    # Build masks: combine raster1 mask with raster2 nodata areas
+    mask2 = np.zeros_like(arr2, dtype=bool)
+    if nodata2 is not None:
+        mask2 = np.isclose(arr2, nodata2)
+
+    # Ensure we have a masked array for arr2
+    arr2m = np.ma.array(arr2, mask=mask2)
+
+    diff = (arr1.astype(out_dtype) - arr2m.astype(out_dtype))
+
+    # Decide output nodata
+    if nodata_out is None:
+        # prefer raster1 nodata if defined, otherwise choose a sane float nodata
+        nodata_out = nodata1 if nodata1 is not None else -9999.0
+
+    # Update output profile
     profile.update(
-        driver='GTiff',              
-        dtype=diff.dtype,
-        nodata=profile.get('nodata', None)
+        driver="GTiff",
+        count=1,
+        dtype=np.dtype(out_dtype).name,
+        nodata=nodata_out,
+        compress="LZW",
+        tiled=True,
+        blockxsize=256,
+        blockysize=256,
     )
 
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(diff.filled(nodata_out).astype(out_dtype), 1)
 
-
-    # Write output
-    with rasterio.open(output_path, 'w', **profile) as dst:
-        print(f"Writing difference raster to {output_path}")
-        dst.write(diff.filled(profile.get('nodata', 0)), 1)
+    print(f"Done. Output nodata={nodata_out}, dtype={out_dtype}, shape={diff.shape}")
 
 if __name__ == "__main__":
     
     # min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\UKFP\min_elev_points.gpkg"
-    min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Leidl\min_elev_points.gpkg"
+    dem = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\Topography\2016_USDA_DEM.tif"
+    min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\median_elev_points.gpkg"
     output_dir = os.path.dirname(min_points_gpkg)
-    output_WS_raster = os.path.join(output_dir, "interpolated_WSE.tif")
 
     # ──────────────── Configuration ────────────────────
     # Name of the attribute field holding elevation values
     elevation_field = "elevation"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
     # Raster pixel size (in the same units as your GeoPackage CRS)
-    pixel_size     = 3
+    pixel_size     = 1
     # IDW parameters
     idw_power      = 2   # default 2. power parameter (controls distance weighting) higher = more localized influence
     idw_smoothing  = 1   # default 1. smoothing parameter (reduces bull’s-eye effect) greater than 1 = more smoothing
     # Set to half the max valley width in the network
-    idw_radius     = 1200   # search radius for IDW interpolation
+    idw_radius     = 200   # search radius for IDW interpolation
+
+    output_WS_raster = os.path.join(output_dir, f"interpolated_GGL_{pixel_size}m.tif")
+    output_HAWS_raster = os.path.join(output_dir, f"GGL_REM_{pixel_size}m.tif")
 
     # ────────────────────────────────────────────────────
     
@@ -211,8 +239,13 @@ if __name__ == "__main__":
         smoothing    = idw_smoothing,
         radius       = idw_radius  
     )
-    
 
+    difference_rasters(
+        raster_path1 = dem,
+        raster_path2 = output_WS_raster,
+        output_path  = output_HAWS_raster
+    )
+    
     # elevation_field = "BF_depth_Legg_m"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
     # output_WS_raster = os.path.join(output_dir, "BF_depth_Legg_m.tif")
     # interpolate_water_surface(

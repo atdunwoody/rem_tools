@@ -268,17 +268,13 @@ def create_bendy_transects_smooth(
 
 
 if __name__ == "__main__":
-    # streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\TB_centerline.gpkg"
-    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Leidl\Leidl centerline.gpkg"
-    input_layer = None  # e.g., "centerline"; set if your GPKG has multiple layers
-    spacing = 100.0
-    transect_length = 800.0
-    window = 1200.0
+    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\centerline.gpkg"
+    input_layer = None 
+    spacing = 50.0
+    transect_length = 600.0
+    window = 400.0
 
-    out_path = os.path.join(
-        os.path.dirname(streams_gpkg),
-        f"transects.gpkg",
-    )
+    out_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\transects 600ft.gpkg"
     create_bendy_transects_smooth(
         input_gpkg=streams_gpkg,
         output_gpkg=out_path,
