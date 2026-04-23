@@ -25,8 +25,8 @@ def _format_bin_label(low: float, high: float, is_last: bool) -> str:
     We use [low, high) for all but the last bin, and [low, high] for the last.
     """
     if is_last:
-        return f"[{low:g}, {high:g}]"
-    return f"[{low:g}, {high:g})"
+        return f"{low:g}-{high:g}"
+    return f"{low:g}-{high:g}"
 
 
 def classify_raster_manual_bins(
@@ -150,14 +150,16 @@ def classify_raster_manual_bins(
 
     # Labels
     class_to_label: dict[int, str] = {}
+    class_to_format: dict[int, tuple[float, float, bool]] = {}
     for i in range(n_classes):
         lo = edges[i]
         hi = edges[i + 1]
         is_last = (i == n_classes - 1)
+        class_to_format[i + 1] = (lo, hi, is_last)
         class_to_label[i + 1] = _format_bin_label(lo, hi, is_last)
 
     gdf["ClassRange"] = gdf["class_id"].map(class_to_label)
-
+    
     if dissolve_polygons:
         gdf = (
             gdf.dissolve(by="class_id", as_index=False)
@@ -182,14 +184,26 @@ def classify_raster_manual_bins(
 
 
 if __name__ == "__main__":
-    in_raster = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\GGL_REM_1m.tif"
+    in_raster = r"C:\L\Lichen\Lichen - Documents\Projects\20240010_RoaringCr Des (CCD)\07_GIS\Analysis\Entiat REM\Exports\Entiat_HAWS_REM_3ft.tif"
 
-    out_class_raster = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\GGL Classified 4 class.tif"
-    out_polygons = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\GGL Classified 4 class.gpkg"
+    out_class_raster = r"C:\L\Lichen\Lichen - Documents\Projects\20240010_RoaringCr Des (CCD)\07_GIS\Analysis\Entiat REM\Entiat_HAWS_REM_3ft_17_classes.tif"
+    out_polygons = r"C:\L\Lichen\Lichen - Documents\Projects\20240010_RoaringCr Des (CCD)\07_GIS\Analysis\Entiat REM\Entiat_HAWS_REM_3ft_17_classes.gpkg"
 
-    # class_edges = [-3, -2.5, -2, -1.5, -1, -0.5, -0.2, 0, 0.2, 0.5, 1, 1.5, 2, 2.5, 3]
-    # class_edges = [-3, -1, -0.5, 0, 0.5, 1, 3]
-    class_edges = [-3, -1, 0, 1, 3]
+    
+    # # 13 clas REM
+    # class_edges = [-3, 0, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    
+    # 17 classes REM
+    class_edges = [-10, 0, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    
+    # # 12 classes REM
+    # class_edges = [-10, 0, 1, 1.5, 2, 3, 4, 5, 6, 7, 10, 15]
+    
+    # #OHW
+    # class_edges = [-3, 1]
+    
+    # #Valley outline
+    # class_edges = [-5, 15]
     
     classify_raster_manual_bins(
         in_raster_path=in_raster,

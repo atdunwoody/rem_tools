@@ -172,6 +172,9 @@ def create_bendy_transects_smooth(
     str
         The output GeoPackage path.
     """
+    #Make outputfolder if it doesn't exist
+    os.makedirs(os.path.dirname(output_gpkg), exist_ok=True)
+    
     # ---- Read & validate
     gdf = gpd.read_file(input_gpkg, layer=input_layer)
     gdf = _ensure_make_valid(gdf)
@@ -268,18 +271,18 @@ def create_bendy_transects_smooth(
 
 
 if __name__ == "__main__":
-    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\centerline.gpkg"
+    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\centerline.gpkg"
     input_layer = None 
-    spacing = 50.0
-    transect_length = 600.0
-    window = 400.0
+    spacing = 100
+    transect_length = 300
+    window = 500.0
 
-    out_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\transects 600ft.gpkg"
+    out_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\Working\transects.gpkg"
     create_bendy_transects_smooth(
         input_gpkg=streams_gpkg,
         output_gpkg=out_path,
         input_layer=input_layer,
-        output_layer="transects_bendy_smooth",
+        output_layer="transects",
         spacing=spacing,
         transect_length=transect_length,
         window=window,

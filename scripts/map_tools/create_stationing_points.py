@@ -24,7 +24,6 @@ def _ensure_make_valid(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         gdf["geometry"] = gdf.geometry.apply(make_valid)
     except Exception:
         gdf["geometry"] = gdf.geometry.buffer(0)
-    # Drop empties and zero-length lines
     gdf = gdf[~gdf.geometry.is_empty]
     gdf = gdf[gdf.geometry.length > 0]
     return gdf
@@ -39,7 +38,6 @@ def _longest_linestring(geom: base.BaseGeometry) -> LineString:
         if isinstance(merged, MultiLineString):
             return max(merged.geoms, key=lambda l: l.length)
         return merged
-    # If geometry collection or other, try extracting lines
     try:
         parts: Iterable[LineString] = [g for g in geom.geoms if isinstance(g, LineString)]
         if not parts:
@@ -47,6 +45,33 @@ def _longest_linestring(geom: base.BaseGeometry) -> LineString:
         return max(parts, key=lambda l: l.length)
     except Exception as e:
         raise ValueError(f"Unsupported geometry type for centerline: {geom.geom_type}") from e
+
+
+def _thin_linestring_vertices(line: LineString, thin_vertices: int) -> LineString:
+    """
+    Keep every Nth vertex from a LineString, always preserving the first and last vertex.
+
+    thin_vertices=1 means no thinning.
+    thin_vertices=10 means keep vertices 0, 10, 20, ... and the final vertex.
+    """
+    if thin_vertices < 1:
+        raise ValueError("thin_vertices must be >= 1.")
+
+    coords = list(line.coords)
+    if len(coords) <= 2 or thin_vertices == 1:
+        return line
+
+    thinned = [coords[0]]
+    thinned.extend(coords[i] for i in range(thin_vertices, len(coords) - 1, thin_vertices))
+
+    if thinned[-1] != coords[-1]:
+        thinned.append(coords[-1])
+
+    # If thinning collapses too aggressively, fall back to original
+    if len(thinned) < 2:
+        return line
+
+    return LineString(thinned)
 
 
 def _format_station_ft(distance_ft: float) -> str:
@@ -179,7 +204,6 @@ def _feet_to_crs_units(distance_ft: float, crs: CRS) -> float:
     """Convert a distance in feet to CRS units."""
     ft_per_unit = _crs_linear_unit_to_feet_per_unit(crs)
     if ft_per_unit is None:
-        # Fallback: assume meters
         return distance_ft / M_TO_FT
     return distance_ft / ft_per_unit
 
@@ -213,7 +237,6 @@ def _pick_terminal_endpoint_of_max_DA(
 
     a, b = _endpoint_points(max_geom)
 
-    # Build union of "all other lines"
     others = gdf_lines.drop(gdf_lines.index[max_idx]).geometry
     if len(others) == 0:
         return max_idx, b
@@ -301,22 +324,31 @@ def create_stationing_points_smooth(
     output_gpkg: str,
     input_layer: Optional[str] = None,
     output_layer: Optional[str] = None,
-    spacing_ft: float = 100.0,     # FEET INPUT
-    window_ft: float = 200.0,      # FEET INPUT
+    spacing_ft: float = 100.0,
+    window_ft: float = 200.0,
     *,
-    start_station_mi: float = 0.0, # label offset, in miles
+    start_station_mi: float = 0.0,
     da_field: str = "DA_km2",
-    endpoint_touch_tol_ft: float = 1.0,  # how close counts as "touching" at the outlet node
+    endpoint_touch_tol_ft: float = 1.0,
+    thin_vertices: int = 1,
+    thinned_centerline_layer: str = "centerline_thinned",
     debug: bool = True,
     debug_every_n: int = 25,
 ) -> str:
     """
-    Create stationing *points* along a dissolved centerline at exact multiples of spacing_ft.
+    Create stationing points along a dissolved centerline at exact multiples of spacing_ft.
+
+    Parameters
+    ----------
+    thin_vertices : int
+        Keep every Nth vertex on the dissolved/oriented centerline before generating
+        river-mile points. thin_vertices=1 means no thinning.
+    thinned_centerline_layer : str
+        Output layer name for the saved thinned centerline.
 
     Outputs point geometry at each station, plus fields:
       - stream_dir_deg : azimuth of stream tangent (0=N, 90=E, clockwise)
       - rotation       : label rotation for QGIS (0=E, clockwise) adjusted to keep upright
-                         (use as data-defined label rotation in QGIS with Horizontal text)
     """
     getcontext().prec = 28
 
@@ -326,6 +358,8 @@ def create_stationing_points_smooth(
         raise ValueError("window_ft must be >= 0.")
     if start_station_mi < 0:
         raise ValueError("start_station_mi must be >= 0 (miles).")
+    if thin_vertices < 1:
+        raise ValueError("thin_vertices must be >= 1.")
 
     start_station_offset_ft = float(start_station_mi) * FT_PER_MILE
 
@@ -341,7 +375,6 @@ def create_stationing_points_smooth(
     if ft_per_unit is None:
         ft_per_unit = M_TO_FT
 
-    # Tolerances in CRS units
     touch_tol_units = _feet_to_crs_units(endpoint_touch_tol_ft, crs_work)
 
     # ---- Find terminal start point on max-DA feature
@@ -364,10 +397,33 @@ def create_stationing_points_smooth(
     # ---- Orient centerline so stationing begins at the chosen terminal endpoint
     centerline = _orient_line_to_start_at_point(centerline, start_pt)
 
-    # ---- Convert feet inputs -> CRS units (for geometry work)
+    # ---- Thin vertices before stationing
+    original_vertex_count = len(centerline.coords)
+    centerline = _thin_linestring_vertices(centerline, thin_vertices)
+    thinned_vertex_count = len(centerline.coords)
+
+    if centerline.length <= 0:
+        raise ValueError("Thinned centerline has zero length.")
+
+    # ---- Save thinned centerline
+    centerline_gdf = gpd.GeoDataFrame(
+        [{
+            "geometry": centerline,
+            "thin_vertices": thin_vertices,
+            "orig_vertices": original_vertex_count,
+            "thin_vertices_kept": thinned_vertex_count,
+            "length_ft": float(centerline.length * ft_per_unit),
+            "length_mi": float(centerline.length * ft_per_unit / FT_PER_MILE),
+        }],
+        crs=gdf_proj.crs,
+    )
+    centerline_gdf = _to_source_crs(centerline_gdf, back_crs)
+    centerline_gdf.to_file(output_gpkg, layer=thinned_centerline_layer, driver="GPKG")
+
+    # ---- Convert feet inputs -> CRS units
     window = _feet_to_crs_units(window_ft, crs_work)
 
-    # ---- Build exact station list in FEET (multiples of spacing_ft) for GEOMETRY
+    # ---- Build exact station list in FEET
     L_units = centerline.length
     L_ft = float(L_units * ft_per_unit)
 
@@ -381,9 +437,8 @@ def create_stationing_points_smooth(
     skips = {"past_end": 0, "empty_p": 0, "no_tangent": 0}
 
     for i, st_ft_dec in enumerate(station_ft_vals_dec):
-        # ---- Distance along line for GEOMETRY (unchanged)
-        st_ft_geom = float(st_ft_dec)  # 0, spacing, 2*spacing, ...
-        d_units = float(st_ft_dec / Decimal(str(ft_per_unit)))  # CRS units
+        st_ft_geom = float(st_ft_dec)
+        d_units = float(st_ft_dec / Decimal(str(ft_per_unit)))
 
         if d_units < 0.0:
             continue
@@ -402,25 +457,25 @@ def create_stationing_points_smooth(
             continue
         tx, ty = t
 
-        stream_dir = _azimuth_from_tangent(tx, ty)               # 0=N, clockwise
-        rotation = _qgis_rotation_from_azimuth(stream_dir, keep_upright=True)  # 0=E, clockwise
+        stream_dir = _azimuth_from_tangent(tx, ty)
+        rotation = _qgis_rotation_from_azimuth(stream_dir, keep_upright=True)
 
-        # ---- LABELS / ATTRIBUTES (shifted)
         st_ft_label = st_ft_geom + start_station_offset_ft
         river_mi_label = st_ft_label / FT_PER_MILE
-        station_m_label = st_ft_label / M_TO_FT  # numeric meters for the labeled station
+        station_m_label = st_ft_label / M_TO_FT
 
         rows_out.append(
             {
-                "geometry": Point(p.x, p.y),               # <-- POINTS (not transect lines)
+                "geometry": Point(p.x, p.y),
                 "station_ft": _format_station_ft(st_ft_label),
                 "river_mi": river_mi_label,
+                "river_mi_text": f"RM {river_mi_label:.1f}",
                 "station_ft_val": st_ft_label,
                 "station_m": station_m_label,
-                "station_ft_geom": st_ft_geom,             # unshifted along-line feet (QC)
+                "station_ft_geom": st_ft_geom,
                 "station_mi_geom": st_ft_geom / FT_PER_MILE,
-                "stream_dir_deg": stream_dir,              # <-- NEW
-                "rotation": rotation,                      # <-- NEW (QGIS label rotation)
+                "stream_dir_deg": stream_dir,
+                "rotation": rotation,
             }
         )
 
@@ -439,31 +494,34 @@ def create_stationing_points_smooth(
     out_gdf.to_file(output_gpkg, layer=out_layer, driver="GPKG")
 
     print(
-        f"[✔] Created stationing points to {output_gpkg} layer={out_layer}\n"
-        f"    spacing_ft={spacing_ft} ft (exact multiples), window_ft={window_ft} ft\n"
+        f"[✔] Created stationing points to {output_gpkg}\n"
+        f"    point layer={out_layer}\n"
+        f"    thinned centerline layer={thinned_centerline_layer}\n"
+        f"    spacing_ft={spacing_ft} ft, window_ft={window_ft} ft\n"
         f"    start_station_mi={start_station_mi} mi (label offset = {start_station_offset_ft:.1f} ft)\n"
+        f"    thin_vertices={thin_vertices}\n"
+        f"    original centerline vertices={original_vertex_count}\n"
+        f"    thinned centerline vertices={thinned_vertex_count}\n"
         f"    da_field={da_field}, endpoint_touch_tol_ft={endpoint_touch_tol_ft} ft\n"
         f"    Working CRS: {crs_work.to_string()}\n"
-        f"    Dissolved centerline length: {L_units:.3f} (CRS units) = {L_ft:.3f} ft\n"
-        f"    Stationing begins at terminal endpoint of max-{da_field} feature (geometry).\n"
+        f"    Thinned centerline length: {L_units:.3f} (CRS units) = {L_ft:.3f} ft\n"
+        f"    Stationing begins at terminal endpoint of max-{da_field} feature.\n"
         f"    Output points created: {len(rows_out)} / attempted: {len(station_ft_vals_dec)}\n"
-        f"    Skip counts: {skips}\n\n"
-        f"    Fields:\n"
-        f"      stream_dir_deg = azimuth (0=N, 90=E, clockwise)\n"
-        f"      rotation       = QGIS label rotation (0=E, clockwise; kept upright)\n"
+        f"    Skip counts: {skips}\n"
     )
     return output_gpkg
 
 
 if __name__ == "__main__":
-    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\centerline.gpkg"
+    streams_gpkg = r"D:\SF Toutle Brownell\REM\streams\streams_1000k.gpkg"
     input_layer = None
 
-    # FEET inputs:
     spacing_ft = 2640.0  # 0.5 mile
     window_ft = 200.0
+    start_station = 0  # miles label offset
 
-    start_station = 7.5  # miles (label offset)
+    # Keep every 10th vertex on the dissolved centerline
+    thin_vertices = 40
 
     out_path = os.path.join(
         os.path.dirname(streams_gpkg),
@@ -480,6 +538,8 @@ if __name__ == "__main__":
         start_station_mi=start_station,
         da_field="DA_km2",
         endpoint_touch_tol_ft=1.0,
-        debug=True,
+        thin_vertices=thin_vertices,
+        thinned_centerline_layer="centerline_thinned",
+        debug=False,
         debug_every_n=10,
     )

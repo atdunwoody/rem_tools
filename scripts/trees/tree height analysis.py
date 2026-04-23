@@ -281,9 +281,10 @@ def process_tree_heights(
 if __name__ == "__main__":
 
     # # ----------------- Leidl -----------------
-    dsm_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\HAWS Map\Topography\2016_USDA_DSM.tif"
-    be_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\HAWS Map\Topography\2016_USDA_DEM ndv.tif"
-    out_dir = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\HAWS Map\Trees"    
+    dsm_path = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\Full length analysis\TB DSM tifs\lower_DSM_merged.tif"
+
+    be_path = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\Full length analysis\TB DEM tifs\lower_DEM_merged.tif"
+    out_dir = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\Full length analysis\Trees"
 
     process_tree_heights(dsm_path, be_path, out_dir)
 

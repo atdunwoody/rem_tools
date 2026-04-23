@@ -150,7 +150,8 @@ def extract_min_points(
             min_pt = Point(coords[min_idx])
 
             elev = min_val if min_val > 0 else None
-
+            
+            
             if flank_min_points:
                 start_pt, end_pt = _safe_endpoints(line)
                 if start_pt is None or end_pt is None:
@@ -297,14 +298,14 @@ def extract_median_points(
 # Entrypoint
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    default_transect_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\transects clipped.gpkg"
-    default_dem_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\Topography\2016_USDA_DEM.tif"
-    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "median_elev_points.gpkg")
+    default_transect_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\Working\transects.gpkg"
+    default_dem_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\USGS1m_DEM\USGS_3ft_DEM.tif"
+    default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points.gpkg")
 
     extract_elevations_along_transect(
         transect_gpkg=default_transect_gpkg,
         dem_path=default_dem_path,
         output_gpkg=default_output_gpkg,
-        method="median",          # "min" for HAWS or "median" for GGL
+        method="min",          # "min" for HAWS or "median" for GGL
         flank_min_points=True,    # include endpoints too
     )

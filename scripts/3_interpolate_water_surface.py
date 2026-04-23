@@ -208,25 +208,24 @@ def difference_rasters(raster_path1: str, raster_path2: str, output_path: str,
     print(f"Done. Output nodata={nodata_out}, dtype={out_dtype}, shape={diff.shape}")
 
 if __name__ == "__main__":
-    
-    # min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\UKFP\min_elev_points.gpkg"
-    dem = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\Topography\2016_USDA_DEM.tif"
-    min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\GGL\median_elev_points.gpkg"
+
+    dem = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\USGS1m_DEM\USGS_3ft_DEM.tif"
+    min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\Working\min_elev_points.gpkg"
     output_dir = os.path.dirname(min_points_gpkg)
 
     # ──────────────── Configuration ────────────────────
     # Name of the attribute field holding elevation values
     elevation_field = "elevation"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
     # Raster pixel size (in the same units as your GeoPackage CRS)
-    pixel_size     = 1
+    pixel_size     = 3
     # IDW parameters
     idw_power      = 2   # default 2. power parameter (controls distance weighting) higher = more localized influence
     idw_smoothing  = 1   # default 1. smoothing parameter (reduces bull’s-eye effect) greater than 1 = more smoothing
     # Set to half the max valley width in the network
-    idw_radius     = 200   # search radius for IDW interpolation
+    idw_radius     = 300   # search radius for IDW interpolation
 
-    output_WS_raster = os.path.join(output_dir, f"interpolated_GGL_{pixel_size}m.tif")
-    output_HAWS_raster = os.path.join(output_dir, f"GGL_REM_{pixel_size}m.tif")
+    output_WS_raster = os.path.join(output_dir, f"interpolated_HAWS_{pixel_size}ft.tif")
+    output_HAWS_raster = os.path.join(output_dir, f"HAWS_REM_{pixel_size}ft.tif")
 
     # ────────────────────────────────────────────────────
     

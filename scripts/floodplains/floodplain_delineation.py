@@ -57,7 +57,7 @@ def raster_lt_threshold_to_polygon(
 
 
 if __name__ == "__main__":
-    raster = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\REM\HAWS_REM_1m.tif"
-    output = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\jc_floodplain_10m.gpkg"
-    print(f"Deineating floodplains in {raster}...")
-    raster_lt_threshold_to_polygon(raster, threshold=10, out_path=output)
+    rem_raster = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\Full length analysis\TB Merged lower REM.tif"
+    output = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\Full length analysis\TB lower valley.gpkg"
+    print(f"Deineating floodplains in {rem_raster}...")
+    raster_lt_threshold_to_polygon(rem_raster, threshold=10, out_path=output)
