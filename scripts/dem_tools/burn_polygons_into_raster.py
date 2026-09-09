@@ -35,14 +35,14 @@ from rasterio.features import rasterize
 # =========================
 # User inputs
 # =========================
-input_raster = r"C:\L\Lichen\Lichen - Documents\Projects\20240005_Dry Creek Plan (YN)\07_GIS\Data_Out\HAWS\Confluence HAWS\HAWS_REM_3ft.tif"
-input_polygons = r"C:\L\Lichen\Lichen - Documents\Projects\20240005_Dry Creek Plan (YN)\07_GIS\Data_Out\HAWS\Confluence HAWS\REM edits.gpkg"
+input_raster = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\REM\Expanded network\Voronoi Test v2\HAWS_REM_3ft_600idw.tif"
+input_polygons = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\REM\Expanded network\REM erasure polygons.gpkg"
 
 # Value to assign to the raster wherever polygons overlap
 burn_value = 15
 
 # Output raster
-output_raster = r"C:\L\Lichen\Lichen - Documents\Projects\20240005_Dry Creek Plan (YN)\07_GIS\Data_Out\HAWS\Confluence HAWS\HAWS_REM_3ft_edited.tif"
+output_raster = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\REM\Expanded network\Voronoi Test v2\HAWS_REM_3ft_600idw_edited.tif"
 
 # Rasterization option
 all_touched = False

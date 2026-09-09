@@ -1,3 +1,5 @@
 {
-    "editor.inlayHints.enabled": "off"
+    "editor.inlayHints.enabled": "off",
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda"
 }

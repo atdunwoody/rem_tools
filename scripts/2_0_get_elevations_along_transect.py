@@ -171,6 +171,7 @@ def extract_min_points(
                             "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
                             "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
                             "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
+                            "BF_depth_Beechie_scaled_m": row.get("BF_depth_Beechie_scaled_m", None),
                         }
                     )
             else:
@@ -185,6 +186,7 @@ def extract_min_points(
                         "BF_width_Castro_m": row.get("BF_width_Castro_m", None),
                         "BF_depth_Castro_m": row.get("BF_depth_Castro_m", None),
                         "BF_width_Beechie_m": row.get("BF_width_Beechie_m", None),
+                        "BF_depth_Beechie_scaled_m": row.get("BF_depth_Beechie_scaled_m", None),
                     }
                 )
 
@@ -298,8 +300,8 @@ def extract_median_points(
 # Entrypoint
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    default_transect_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\Working\transects.gpkg"
-    default_dem_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\USGS1m_DEM\USGS_3ft_DEM.tif"
+    default_transect_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CFC Silver Creek\Field Data\LiDAR\working\transects.gpkg"
+    default_dem_path = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CFC Silver Creek\Field Data\LiDAR\Silver_Creek_DEM_3ft.tif"
     default_output_gpkg = os.path.join(os.path.dirname(default_transect_gpkg), "min_elev_points.gpkg")
 
     extract_elevations_along_transect(

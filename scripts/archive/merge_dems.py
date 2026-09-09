@@ -185,8 +185,7 @@ def merge_folders_to_parent_named_outputs(
 
 if __name__ == "__main__":
     input_folders = [
-        r"C:\L\OneDrive - Lichen\Documents\Projects\Tucannon\Wenaha\DEMs\Tuccannon DEM 1m\WA LiDAR 2018\2018 DEM",
-        r"C:\L\OneDrive - Lichen\Documents\Projects\Tucannon\Wenaha\DEMs\Tuccannon DEM 1m\WA LiDAR 2018\2018 DSM"
+        r"C:\Users\AlexThornton-Dunwood\Downloads\custom_download\datasetsC\tacoma_pud_lakes_leafon_2025\dtm"
     ]
 
     merge_folders_to_parent_named_outputs(

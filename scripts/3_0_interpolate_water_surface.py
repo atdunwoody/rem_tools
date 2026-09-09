@@ -209,25 +209,26 @@ def difference_rasters(raster_path1: str, raster_path2: str, output_path: str,
 
 if __name__ == "__main__":
 
-    dem = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\USGS1m_DEM\USGS_3ft_DEM.tif"
-    min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CTUIR Hidaway Creek\REM\Working\min_elev_points.gpkg"
-    output_dir = os.path.dirname(min_points_gpkg)
+    dem = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CFC Silver Creek\Field Data\LiDAR\Silver_Creek_DEM_3ft.tif"
+    min_points_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CFC Silver Creek\Field Data\LiDAR\working\min_elev_points.gpkg"
+    output_dir = os.path.dirname(os.path.dirname(min_points_gpkg))
 
     # ──────────────── Configuration ────────────────────
-    # Name of the attribute field holding elevation values
-    elevation_field = "elevation"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
+
     # Raster pixel size (in the same units as your GeoPackage CRS)
     pixel_size     = 3
     # IDW parameters
-    idw_power      = 2   # default 2. power parameter (controls distance weighting) higher = more localized influence
+    idw_power      = 1.8   # default 2. power parameter (controls distance weighting) higher = more localized influence
     idw_smoothing  = 1   # default 1. smoothing parameter (reduces bull’s-eye effect) greater than 1 = more smoothing
     # Set to half the max valley width in the network
-    idw_radius     = 300   # search radius for IDW interpolation
-
-    output_WS_raster = os.path.join(output_dir, f"interpolated_HAWS_{pixel_size}ft.tif")
-    output_HAWS_raster = os.path.join(output_dir, f"HAWS_REM_{pixel_size}ft.tif")
+    idw_radius     = 600   # search radius for IDW interpolation
 
     # ────────────────────────────────────────────────────
+    # Name of the attribute field holding elevation values
+    elevation_field = "elevation"  # "elevation", "BF_depth_Legg_m", "BF_depth_Beechie_m"
+    output_WS_raster = os.path.join(output_dir, "working", f"interpolated_HAWS_{pixel_size}ft.tif")
+    output_HAWS_raster = os.path.join(output_dir, f"HAWS_REM_{pixel_size}ft_{idw_radius}idw.tif")
+    
     
     interpolate_water_surface(
         gpkg_path    = min_points_gpkg,
@@ -245,14 +246,26 @@ if __name__ == "__main__":
         output_path  = output_HAWS_raster
     )
     
-    # elevation_field = "BF_depth_Legg_m"  # or "BF_depth_Legg_m", "BF_depth_Beechie_m"
-    # output_WS_raster = os.path.join(output_dir, "BF_depth_Legg_m.tif")
-    # interpolate_water_surface(
-    #     gpkg_path    = min_points_gpkg,
-    #     out_path     = output_WS_raster,
-    #     field        = elevation_field,
-    #     pix_size     = pixel_size,
-    #     power        = idw_power,
-    #     smoothing    = idw_smoothing,
-    #     radius       = idw_radius  
-    # )
+    elevation_field = "BF_depth_Beechie_scaled_m"  # or "BF_depth_Legg_m", "BF_depth_Beechie_scaled_m"
+    output_WS_raster = os.path.join(output_dir, f"{elevation_field}.tif")
+    interpolate_water_surface(
+        gpkg_path    = min_points_gpkg,
+        out_path     = output_WS_raster,
+        field        = elevation_field,
+        pix_size     = pixel_size,
+        power        = idw_power,
+        smoothing    = idw_smoothing,
+        radius       = idw_radius  
+    )
+    
+    elevation_field = "BF_depth_Legg_m"  # or "BF_depth_Legg_m", "BF_depth_Beechie_scaled_m"
+    output_WS_raster = os.path.join(output_dir, f"{elevation_field}.tif")
+    interpolate_water_surface(
+        gpkg_path    = min_points_gpkg,
+        out_path     = output_WS_raster,
+        field        = elevation_field,
+        pix_size     = pixel_size,
+        power        = idw_power,
+        smoothing    = idw_smoothing,
+        radius       = idw_radius  
+    )

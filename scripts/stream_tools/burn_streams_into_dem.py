@@ -66,13 +66,13 @@ def burn_streams_into_dem(
     return str(out_path)
 
 
-streams_vector = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Chumstick Creek REM\streams_burned_in\burn_in_stream.gpkg"
-dem_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Chumstick Creek REM\rasters_USGS1m\output_USGS1m.tif"
-out_path = r"C:\Users\AlexThornton-Dunwood\OneDrive - Lichen Land & Water\Documents\Projects\Chumstick Creek REM\rasters_USGS1m\burned_dem.tif"
+streams_vector = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\Streams\stream_crossings.gpkg"
+dem_path = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\0_Data_In\Public\LiDAR\USGS3ft_proj_2020-2021_merged.tif"
+out_path = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\0_Data_In\Public\LiDAR\USGS3ft_proj_2020-2021_road_crossing_conditioned_merged.tif"
 
 burned_dem_path = burn_streams_into_dem(
     streams_vector=streams_vector,
     dem_path=dem_path,
     out_path=out_path,
-    burn_depth=0.5
+    burn_depth=10
 )

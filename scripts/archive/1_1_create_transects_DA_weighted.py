@@ -9,6 +9,7 @@ from shapely.ops import linemerge
 from shapely.validation import make_valid
 from pyproj import CRS
 
+
 # ---------------------------
 # Helpers
 # ---------------------------
@@ -19,7 +20,7 @@ def _ensure_make_valid(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         gdf["geometry"] = gdf.geometry.apply(make_valid)
     except Exception:
         gdf["geometry"] = gdf.geometry.buffer(0)
-    # Drop empties and zero-length lines
+
     gdf = gdf[~gdf.geometry.is_empty]
     gdf = gdf[gdf.geometry.length > 0]
     return gdf
@@ -34,7 +35,7 @@ def _longest_linestring(geom: base.BaseGeometry) -> LineString:
         if isinstance(merged, MultiLineString):
             return max(merged.geoms, key=lambda l: l.length)
         return merged
-    # If geometry collection or other, try extracting lines
+
     try:
         parts: Iterable[LineString] = [g for g in geom.geoms if isinstance(g, LineString)]
         if not parts:
@@ -60,10 +61,10 @@ def _smooth_normal(line: LineString, distance: float, window: float) -> Optional
     L = line.length
     if L == 0:
         return None
-    # Clamp sample points
+
     d0 = max(0.0, distance - window)
     d1 = min(L, distance + window)
-    # Interpolate
+
     p = line.interpolate(distance)
     pb = line.interpolate(d0)
     pf = line.interpolate(d1)
@@ -71,18 +72,15 @@ def _smooth_normal(line: LineString, distance: float, window: float) -> Optional
     if p.is_empty or pb.is_empty or pf.is_empty:
         return None
 
-    # Back and forward vectors relative to p
     dx_b, dy_b = (p.x - pb.x), (p.y - pb.y)
     dx_f, dy_f = (pf.x - p.x), (pf.y - p.y)
 
-    # Average direction
     dx_avg = (dx_b + dx_f) / 2.0
     dy_avg = (dy_b + dy_f) / 2.0
     len_dir = math.hypot(dx_avg, dy_avg)
     if len_dir == 0:
         return None
 
-    # Perpendicular (rotate +90 deg): (-dy, dx), then normalize
     nx, ny = (-dy_avg / len_dir, dx_avg / len_dir)
     return (nx, ny)
 
@@ -100,7 +98,6 @@ def _needs_projection(crs: Optional[CRS]) -> bool:
 
 def _guess_local_utm_crs(gdf: gpd.GeoDataFrame) -> CRS:
     """Choose a reasonable UTM based on dataset centroid (WGS84)."""
-    # Reproject a lightweight centroid to WGS84
     centroid_wgs84 = gdf.to_crs(4326).unary_union.centroid
     lon, lat = centroid_wgs84.x, centroid_wgs84.y
     zone = int((lon + 180) // 6) + 1
@@ -134,62 +131,42 @@ def _to_source_crs(gdf: gpd.GeoDataFrame, back_crs: Optional[CRS]) -> gpd.GeoDat
 # Main function
 # ---------------------------
 
-def create_bendy_transects_smooth(
+def create_transects(
     input_gpkg: str,
     output_gpkg: str,
+    DA_field: str = "DA_km2",
     input_layer: Optional[str] = None,
     output_layer: Optional[str] = None,
     spacing: float = 100.0,
-    transect_length: float = 1000.0,
     window: float = 200.0,
+    trans_power = 1/3,
+    trans_multiplier = 100.0,
 ) -> str:
     """
-    Create de-conflicted transects that use a *smoothed* perpendicular orientation,
-    derived from forward/back vectors over a 'window' distance (meters).
+    Create de-conflicted transects that use a smoothed perpendicular orientation,
+    derived from forward/back vectors over a 'window' distance.
+
+    Transect length is set per feature as:
+        transect_length = DA_km2 * 5
+
+    Notes
+    -----
     - Preserves source CRS in output, projecting internally if the source is geographic.
-    - Ensures 'DA_km2' exists on the input centerlines (created with NaN if absent).
+    - Ensures 'DA_km2' exists on the input centerlines.
     - Processes centerlines by descending 'DA_km2' to prioritize larger rivers.
-
-    Parameters
-    ----------
-    input_gpkg : str
-        Path to input GeoPackage containing centerlines (LineString/MultiLineString).
-    output_gpkg : str
-        Path to output GeoPackage to write transects.
-    input_layer : Optional[str]
-        Name of the input layer in the GeoPackage. If None, default layer is used.
-    output_layer : Optional[str]
-        Name of the output layer to create. If None, uses 'transects_bendy_smooth'.
-    spacing : float
-        Spacing between transects along the centerline (meters).
-    transect_length : float
-        Total length of each transect (meters).
-    window : float
-        Smoothing window for direction estimation (meters). Larger = smoother orientation.
-
-    Returns
-    -------
-    str
-        The output GeoPackage path.
     """
-    #Make outputfolder if it doesn't exist
     os.makedirs(os.path.dirname(output_gpkg), exist_ok=True)
-    
-    # ---- Read & validate
+
     gdf = gpd.read_file(input_gpkg, layer=input_layer)
     gdf = _ensure_make_valid(gdf)
 
-    # Ensure DA_km2 exists (if missing, create with NaN)
-    if "DA_km2" not in gdf.columns:
-        gdf["DA_km2"] = np.nan
+    if DA_field not in gdf.columns:
+        raise ValueError(f"DA_field '{DA_field}' not found in input data columns: {gdf.columns.tolist()}")
 
-    # Internal projection for linear units (meters)
     gdf_proj, back_crs = _project_for_linear_ops(gdf)
+    gdf_proj = gdf_proj.sort_values(DA_field, ascending=False)
 
-    # Sort by descending drainage area (NaNs sort last)
-    gdf_proj = gdf_proj.sort_values("DA_km2", ascending=False)
-
-    existing: list[LineString] = []  # accepted transects (for de-conflict tests)
+    existing: list[LineString] = []
     rows_out = []
 
     for idx, row in gdf_proj.iterrows():
@@ -198,33 +175,33 @@ def create_bendy_transects_smooth(
         if L <= 0:
             continue
 
-        d = 0.0
+        da_km2 = row.get(DA_field, np.nan)
+        if da_km2 is None or np.isnan(da_km2) or da_km2 <= 0:
+            continue
+
+        transect_length = (float(da_km2) ** (trans_power)) * trans_multiplier
         half = transect_length / 2.0
 
+        d = 0.0
         while d <= L:
-            # Base point
             p = center_geom.interpolate(d)
             if p.is_empty:
                 d += spacing
                 continue
 
-            # Smoothed normal
             n = _smooth_normal(center_geom, d, window=window)
             if n is None:
                 d += spacing
                 continue
             nx, ny = n
 
-            # Endpoints of the straight candidate
             p1 = Point(p.x - half * nx, p.y - half * ny)
             p2 = Point(p.x + half * nx, p.y + half * ny)
             straight = LineString([p1, p2])
 
-            # De-conflict: accept straight if no intersections
             if not any(straight.intersects(e) for e in existing):
                 chosen = straight
             else:
-                # Try single-bend (offset mid along the normal by quarter-length)
                 bend_off = transect_length / 4.0
                 chosen = None
                 for sign in (1, -1):
@@ -233,58 +210,56 @@ def create_bendy_transects_smooth(
                     if not any(bend_line.intersects(e) for e in existing):
                         chosen = bend_line
                         break
+
                 if chosen is None:
-                    # Could not de-conflict this station; skip
                     d += spacing
                     continue
 
-            # Accept & record
             existing.append(chosen)
             rows_out.append(
                 {
                     "geometry": chosen,
                     "station": _format_station(d),
                     "centerline_id": idx,
-                    "DA_km2": row.get("DA_km2"),
+                    f"{DA_field}": da_km2,
+                    "transect_length_m": transect_length,
                     "BF_width_Legg_m": row.get("BF_width_Legg_m"),
                     "BF_depth_Legg_m": row.get("BF_depth_Legg_m"),
                     "BF_width_Castro_m": row.get("BF_width_Castro_m"),
                     "BF_depth_Castro_m": row.get("BF_depth_Castro_m"),
                     "BF_width_Beechie_m": row.get("BF_width_Beechie_m"),
-                    "BF_depth_Beechie_scaled_m": row.get("BF_depth_Beechie_scaled_m", None),
                 }
             )
             d += spacing
 
-    # Build GeoDataFrame in projected space, then convert back to source CRS
     out_gdf = gpd.GeoDataFrame(rows_out, crs=gdf_proj.crs)
     out_gdf = _to_source_crs(out_gdf, back_crs)
 
-    # Write
-    out_layer = output_layer or "transects_bendy_smooth"
+    out_layer = output_layer or "transects"
     out_gdf.to_file(output_gpkg, layer=out_layer, driver="GPKG")
+
     print(
-        f"[✔] Created bendy transects (smoothed normals) to {output_gpkg} layer={out_layer} "
-        f"(spacing={spacing} m, length={transect_length} m, window={window} m)."
+        f"[✔] Created bendy transects to {output_gpkg} layer={out_layer} "
+        f"(spacing={spacing} m, length=DA_km2*5, window={window} m)."
     )
     return output_gpkg
 
 
-
 if __name__ == "__main__":
-    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CFC Silver Creek\Field Data\LiDAR\Silver Creek Centerline.gpkg"
-    input_layer = None 
-    spacing = 100
-    transect_length = 600
-    window = 1500.0
+    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\Streams\streams_1km2.gpkg"
+    input_layer = None
+    spacing = 100 # in meters, regardless of source CRS units
+    window = 1000.0
 
-    out_path = os.path.join(os.path.dirname(streams_gpkg), "working", "transects.gpkg")
-    create_bendy_transects_smooth(
+    out_path = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\REM\transects.gpkg"
+    create_transects(
         input_gpkg=streams_gpkg,
         output_gpkg=out_path,
+        DA_field="DA_sqmi",
         input_layer=input_layer,
         output_layer="transects",
         spacing=spacing,
-        transect_length=transect_length,
         window=window,
+        trans_power=0.52,
+        trans_multiplier=100.0,
     )

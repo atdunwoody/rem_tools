@@ -136,6 +136,9 @@ def classify_rem_by_bankfull(
                     bf = np.ma.masked_invalid(bf_resampled)
                 else:
                     bf = np.ma.masked_equal(bf_resampled, bf_nodata)
+                    
+                # Multiple BF rater by 3.28084 to convert from meters to feet
+                bf = bf * 3.28084
 
     # -------------------------
     # Build valid mask
@@ -249,26 +252,29 @@ def classify_rem_by_bankfull(
 
 
 if __name__ == "__main__":
-    rem_raster = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\REM\HAWS_REM_1m.tif"
+    rem_raster = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CFC Silver Creek\Field Data\LiDAR\HAWS_REM_3ft_600idw.tif"
 
     # OPTION A: BF raster (reprojected to REM)
-    # bf_raster = r"C:\path\to\bf_raster.tif"
+    # NOTE: Assumes BF raster is in meters, and REM is in feet. The code will convert BF to feet. 
+    bf_raster = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\CFC Silver Creek\Field Data\LiDAR\BF_depth_Legg_m.tif"
 
-    # OPTION B: Static BF stage (same units as REM). Uncomment to use.
-    bf_static = 2.22  # ft from StreamStats average BF Depth
 
-    out_class_raster = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\REM\jc bankfull thresholds 3 classes.tif"
-    out_polygons = r"C:\L\Lichen\Lichen - Documents\Marketing\Proposals\Luck Creek\REMs\REM\jc bankfull thresholds 3 classes.gpkg"
+    # # OPTION B: Static BF stage (same units as REM). Uncomment to use.
+    # bf_static = 2.22  # ft from StreamStats average BF Depth
 
-    thresholds = [0.5, 1, 2]  # anything > 2x becomes nodata/unclassified
+    outname = os.path.splitext(os.path.basename(rem_raster))[0]
+    out_class_raster = os.path.join(os.path.dirname(rem_raster), f"{outname}_classified_6xbfd_beechie.tif")
+    out_polygons = os.path.join(os.path.dirname(rem_raster), f"{outname}_polygons_6xbfd_beechie.gpkg")
+
+    thresholds = [0.5, 1, 2, 4, 6]  # anything > highest classified value becomes nodata/unclassified
 
     classify_rem_by_bankfull(
         rem_raster_path=rem_raster,
         output_class_raster_path=out_class_raster,
         output_polygons_path=out_polygons,
-        # bf_raster_path=bf_raster,     # <-- use BF raster
-        bf_static_value=bf_static,  # <-- or use static BF
+        bf_raster_path=bf_raster,     # <-- use BF raster
+        # bf_static_value=bf_static,  # <-- or use static BF
         thresholds=thresholds,
-        polygon_layer="floodplain",
-        dissolve_polygons=False,
+        polygon_layer="classified_6xbfd",
+        dissolve_polygons=True,
     )

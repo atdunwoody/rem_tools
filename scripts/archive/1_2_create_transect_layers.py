@@ -131,53 +131,119 @@ def _to_source_crs(gdf: gpd.GeoDataFrame, back_crs: Optional[CRS]) -> gpd.GeoDat
 # Main function
 # ---------------------------
 
-def create_bendy_transects_smooth(
+def _sanitize_layer_name(value, prefix: str = "stream") -> str:
+    """
+    Convert a stream_id value to a safe GeoPackage layer name.
+    """
+    import re
+
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        value = "unknown"
+
+    name = str(value).strip()
+    name = re.sub(r"[^A-Za-z0-9_]+", "_", name)
+    name = name.strip("_")
+
+    if not name:
+        name = "unknown"
+
+    # Avoid layer names that begin with a number.
+    if name[0].isdigit():
+        name = f"{prefix}_{name}"
+
+    return name
+
+def create_transects(
     input_gpkg: str,
     output_gpkg: str,
+    DA_field: str = "DA_km2",
+    stream_id_field: str = "stream_id",
     input_layer: Optional[str] = None,
-    output_layer: Optional[str] = None,
     spacing: float = 100.0,
     window: float = 200.0,
+    trans_power=1 / 3,
+    trans_multiplier=100.0,
+    overwrite: bool = True,
 ) -> str:
     """
-    Create de-conflicted transects that use a smoothed perpendicular orientation,
-    derived from forward/back vectors over a 'window' distance.
-
-    Transect length is set per feature as:
-        transect_length = DA_km2 * 5
+    Create de-conflicted transects from stream centerlines and write one
+    output GeoPackage layer per unique stream_id.
 
     Notes
     -----
-    - Preserves source CRS in output, projecting internally if the source is geographic.
-    - Ensures 'DA_km2' exists on the input centerlines.
-    - Processes centerlines by descending 'DA_km2' to prioritize larger rivers.
+    - Preserves source CRS in output, projecting internally if source CRS is geographic.
+    - Requires `DA_field` and `stream_id_field` in the input stream layer.
+    - Processes centerlines by descending drainage area to prioritize larger rivers.
+    - Keeps transect de-confliction separate within each stream_id/output layer.
+    - Transects from different stream_id layers are allowed to intersect.
+    - If multiple input features share the same stream_id, their transects are written
+      to the same output layer and are de-conflicted against each other.
     """
-    os.makedirs(os.path.dirname(output_gpkg), exist_ok=True)
+    output_dir = os.path.dirname(output_gpkg)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    if overwrite and os.path.exists(output_gpkg):
+        os.remove(output_gpkg)
 
     gdf = gpd.read_file(input_gpkg, layer=input_layer)
     gdf = _ensure_make_valid(gdf)
 
-    if "DA_km2" not in gdf.columns:
-        gdf["DA_km2"] = np.nan
+    if DA_field not in gdf.columns:
+        raise ValueError(
+            f"DA_field '{DA_field}' not found in input data columns: "
+            f"{gdf.columns.tolist()}"
+        )
+
+    if stream_id_field not in gdf.columns:
+        raise ValueError(
+            f"stream_id_field '{stream_id_field}' not found in input data columns: "
+            f"{gdf.columns.tolist()}"
+        )
 
     gdf_proj, back_crs = _project_for_linear_ops(gdf)
-    gdf_proj = gdf_proj.sort_values("DA_km2", ascending=False)
+    gdf_proj = gdf_proj.sort_values(DA_field, ascending=False)
 
-    existing: list[LineString] = []
-    rows_out = []
+    # Accumulate transects by sanitized stream_id layer name.
+    transects_by_layer: dict[str, list[dict]] = {}
+
+    # Track existing transects separately by stream_id/output layer.
+    # This is the key change: de-confliction is no longer global.
+    existing_by_layer: dict[str, list[LineString]] = {}
+
+    # Track original stream_id values for reporting.
+    stream_ids_by_layer: dict[str, object] = {}
+
+    total_features_processed = 0
+    total_transects_created = 0
 
     for idx, row in gdf_proj.iterrows():
+        stream_id = row.get(stream_id_field)
+        out_layer = _sanitize_layer_name(stream_id)
+
+        # Only check intersections against transects already created
+        # for this same stream_id/output layer.
+        existing = existing_by_layer.setdefault(out_layer, [])
+
         center_geom = _longest_linestring(row.geometry)
         L = center_geom.length
         if L <= 0:
             continue
 
-        da_km2 = row.get("DA_km2", np.nan)
-        if da_km2 is None or np.isnan(da_km2) or da_km2 <= 0:
+        da_value = row.get(DA_field, np.nan)
+
+        try:
+            da_value = float(da_value)
+        except (TypeError, ValueError):
             continue
 
-        transect_length = (float(da_km2) ** (1/3)) * 200.0
+        if not np.isfinite(da_value) or da_value <= 0:
+            continue
+
+        transect_length = (da_value ** trans_power) * trans_multiplier
         half = transect_length / 2.0
+
+        rows_out = []
 
         d = 0.0
         while d <= L:
@@ -190,6 +256,7 @@ def create_bendy_transects_smooth(
             if n is None:
                 d += spacing
                 continue
+
             nx, ny = n
 
             p1 = Point(p.x - half * nx, p.y - half * ny)
@@ -201,9 +268,11 @@ def create_bendy_transects_smooth(
             else:
                 bend_off = transect_length / 4.0
                 chosen = None
+
                 for sign in (1, -1):
                     mid = Point(p.x + sign * bend_off * nx, p.y + sign * bend_off * ny)
                     bend_line = LineString([p1, mid, p2])
+
                     if not any(bend_line.intersects(e) for e in existing):
                         chosen = bend_line
                         break
@@ -213,12 +282,14 @@ def create_bendy_transects_smooth(
                     continue
 
             existing.append(chosen)
+
             rows_out.append(
                 {
                     "geometry": chosen,
                     "station": _format_station(d),
                     "centerline_id": idx,
-                    "DA_km2": da_km2,
+                    stream_id_field: stream_id,
+                    DA_field: da_value,
                     "transect_length_m": transect_length,
                     "BF_width_Legg_m": row.get("BF_width_Legg_m"),
                     "BF_depth_Legg_m": row.get("BF_depth_Legg_m"),
@@ -227,33 +298,74 @@ def create_bendy_transects_smooth(
                     "BF_width_Beechie_m": row.get("BF_width_Beechie_m"),
                 }
             )
+
             d += spacing
 
-    out_gdf = gpd.GeoDataFrame(rows_out, crs=gdf_proj.crs)
-    out_gdf = _to_source_crs(out_gdf, back_crs)
+        if not rows_out:
+            continue
 
-    out_layer = output_layer or "transects_bendy_smooth"
-    out_gdf.to_file(output_gpkg, layer=out_layer, driver="GPKG")
+        transects_by_layer.setdefault(out_layer, []).extend(rows_out)
+        stream_ids_by_layer[out_layer] = stream_id
+
+        total_features_processed += 1
+        total_transects_created += len(rows_out)
+
+        print(
+            f"[✔] Created {len(rows_out)} transects for feature {idx}, "
+            f"stream_id={stream_id}."
+        )
+
+    layers_written = 0
+    total_transects_written = 0
+
+    for out_layer, rows in transects_by_layer.items():
+        if not rows:
+            continue
+
+        out_gdf = gpd.GeoDataFrame(rows, crs=gdf_proj.crs)
+        out_gdf = _to_source_crs(out_gdf, back_crs)
+
+        out_gdf.to_file(output_gpkg, layer=out_layer, driver="GPKG")
+
+        layers_written += 1
+        total_transects_written += len(out_gdf)
+
+        print(
+            f"[✔] Wrote layer '{out_layer}' for stream_id="
+            f"{stream_ids_by_layer.get(out_layer)} with {len(out_gdf)} transects."
+        )
 
     print(
-        f"[✔] Created bendy transects to {output_gpkg} layer={out_layer} "
-        f"(spacing={spacing} m, length=DA_km2*5, window={window} m)."
+        f"[✔] Finished writing {layers_written} layers and "
+        f"{total_transects_written} transects to {output_gpkg}."
     )
+
+    print(
+        f"[i] Processed {total_features_processed} input features with valid transects."
+    )
+
     return output_gpkg
 
 
+
 if __name__ == "__main__":
-    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20240001.4_Tucan 5-15 (CTUIR)\07_GIS\Wenaha\Tucannon REM\tucannon_centerline.gpkg"
+    streams_gpkg = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\Streams\streams_1km2_group_ids.gpkg"
+
     input_layer = None
-    spacing = 300
+    spacing = 100  # meters, regardless of source CRS units
     window = 1000.0
 
-    out_path = r"C:\L\Lichen\Lichen - Documents\Projects\20240001.4_Tucan 5-15 (CTUIR)\07_GIS\Wenaha\Tucannon REM\transects.gpkg"
-    create_bendy_transects_smooth(
+    out_path = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\REM\transects.gpkg"
+
+    create_transects(
         input_gpkg=streams_gpkg,
         output_gpkg=out_path,
+        DA_field="DA_sqmi",
+        stream_id_field="stream_id",
         input_layer=input_layer,
-        output_layer="transects",
         spacing=spacing,
         window=window,
+        trans_power=0.52,
+        trans_multiplier=100.0,
+        overwrite=True,
     )

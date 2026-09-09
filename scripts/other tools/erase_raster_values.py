@@ -33,7 +33,7 @@ from rasterio.features import geometry_mask
 POLYGON_GPKG = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\temp\eraser poly.gpkg"
 
 # This is what you provided. It must resolve to a GDAL-readable raster dataset.
-RASTER_IN = r"C:\L\Lichen\Lichen - Documents\Projects\20250008_Geomorph Cons (YKFP)\07_GIS\DEMs\Trout-Bear Cr\Full length analysis\TB lower REM classified.tif"
+RASTER_IN = r"C:\L\Lichen\Lichen - Documents\Projects\20260003_Owens-Snipe Assessment (UCSWCD)\07_GIS\1_Analysis\Stream Network Analysis\REM\Expanded network\Voronoi Test v2\HAWS_REM_3ft_600idw.tif"
 
 # Output path (same folder as raster input, with suffix)
 RASTER_OUT = str(Path(RASTER_IN).with_name(f"{Path(RASTER_IN).stem}_erased.tif"))
